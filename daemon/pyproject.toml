@@ -2,7 +2,7 @@
 name = "remote-ai-chat"
 version = "0.1.0"
 description = "Reach the Claude Code or Codex CLI on your own computer, from your own phone, over your own private network."
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 keywords = ["claude-code", "codex", "coding-agent", "websocket", "tailscale", "self-hosted"]
