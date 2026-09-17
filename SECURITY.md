@@ -50,6 +50,15 @@ That is the product. What the design does is bound it.
   start guessing tokens — slowly, but they can try.
 - *The CLIs it drives.* `claude` and `codex` are installed from npm and run with
   your sign-in. Their security is theirs.
+- *Agent definitions you install.* The agent store downloads markdown from
+  public GitHub repositories listed in `daemon/remote_ai_chat/agents.py`.
+  Nothing is executed at install time, but an agent definition is an instruction
+  that later runs with your tools. Read one before you install it.
+- *The self-updater.* `auto_update` is on by default: every 15 minutes the
+  daemon fast-forwards its own checkout to `origin/main` and restarts. Whoever
+  can push to that remote can change what runs on your machine. It will not
+  touch a checkout with uncommitted work and will not do anything but a
+  fast-forward — but if you did not intend to follow a remote, turn it off.
 
 ## If you think you are exposed
 

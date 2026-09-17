@@ -1,11 +1,15 @@
 """Keeping every computer on the same commit.
 
-Two machines run this daemon: the Mac it is written on and a Windows laptop.
-Neither updates the other. Both follow `origin/main`, which is the only thing
-either of them trusts — a machine that pushed to another would have to be
-believed, and there would be no answer to "which one is right" the day they
-disagree. Following a common source makes drifting apart impossible instead of
-merely unlikely.
+Anyone running this on more than one machine has the same problem: the daemons
+have to agree, and none of them should be able to push code at the others. A
+machine that could would have to be believed, and there would be no answer to
+"which one is right" the day they disagree. So each one follows `origin/main`
+on its own. A common source makes drifting apart impossible instead of merely
+unlikely.
+
+This is on by default (`auto_update` in config.toml) and is the reason the
+daemon can be installed on a laptop you do not sit in front of. Turn it off and
+the daemon never touches git.
 
 Both installs are `pip install -e`, so a pull *is* the update: the code on disk
 is the code that runs. Dependencies are the exception, and only when

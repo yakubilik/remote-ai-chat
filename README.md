@@ -197,6 +197,14 @@ tells it to. The whole design is about that sentence being safe to say.
   redacted before it is stored or sent.
 - **Face ID** can lock the app, and can be required before entering bypass mode.
 
+One default worth knowing about: **the daemon updates itself.** `auto_update` is
+on, and every 15 minutes it fast-forwards its own checkout to `origin/main` and
+asks its supervisor to restart it. That is how a laptop you are not sitting in
+front of stays on the same commit as the one you are. It refuses to touch a
+checkout with uncommitted work, only ever fast-forwards, never interrupts a
+running turn, and never waits on a credential prompt. Set `auto_update = false`
+in `~/.remote-ai-chat/config.toml` and it never touches git at all.
+
 It does not defend against someone who already has your unlocked phone, or
 against the model being wrong in a way you approve. Read what you approve.
 
@@ -211,14 +219,15 @@ cd daemon
 python scripts/smoke.py --token TOKEN [--cwd ~/projects] [--audio sample.m4a]
 ```
 
-18 protocol checks that spend no model turns: host info, cwd policy,
-upload/`/files`, archive, delete. Run it right after installing.
+Protocol checks that spend no model turns: host info, cwd policy,
+upload/`/files`, archive, delete. Run it right after installing; `--audio` adds
+the transcription round-trip.
 
 ```bash
 .venv312/bin/python scripts/e2e.py --token TOKEN --image ~/.remote-ai-chat/uploads/<chat>/<img>.jpg
 ```
 
-18 end-to-end checks — resume, deny, interrupt, attachments, groups, archive,
+End-to-end checks — resume, deny, interrupt, attachments, groups, archive,
 delete. This one spends a few real turns.
 
 ```bash
@@ -256,4 +265,7 @@ change that file in the same commit.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). The vendor logos in `app/assets/` are not covered by it — see
+[NOTICE](NOTICE.md).
+
+This project is not affiliated with Anthropic or OpenAI.

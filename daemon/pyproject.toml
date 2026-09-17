@@ -1,8 +1,21 @@
 [project]
 name = "remote-ai-chat"
 version = "0.1.0"
-description = "Turn any computer into a remotely controllable Claude Code / Codex server."
+description = "Reach the Claude Code or Codex CLI on your own computer, from your own phone, over your own private network."
+readme = "../README.md"
 requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["claude-code", "codex", "coding-agent", "websocket", "tailscale", "self-hosted"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Topic :: Software Development",
+]
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
@@ -18,6 +31,11 @@ dependencies = [
   "faster-whisper>=1.0; platform_system != 'Darwin'",    # ... and on Windows / Linux (CPU, CTranslate2)
   "pywinpty>=2.0; platform_system == 'Windows'",         # ConPTY for driving `claude auth login` from the phone
 ]
+
+[project.urls]
+Homepage = "https://github.com/yakubilik/remote-ai-chat"
+Source = "https://github.com/yakubilik/remote-ai-chat"
+Issues = "https://github.com/yakubilik/remote-ai-chat/issues"
 
 [project.scripts]
 remote-ai-chat = "remote_ai_chat.__main__:main"
