@@ -138,8 +138,10 @@ uv --no-config pip install --python .venv312/bin/python -e . "mlx-whisper>=0.4"
 .venv312/bin/remote-ai-chat devices | revoke <id> | status | install | uninstall
 ```
 
-Python 3.12 specifically: mlx-whisper, which does voice transcription on Apple
-silicon, does not build on 3.14. The first voice message downloads
+Python 3.11–3.13, and 3.12 is what this is actually run on — the constraint
+has always been mlx-whisper, which does voice transcription on Apple silicon and
+whose own dependencies have been slow to follow new Python releases. The first
+voice message downloads
 `mlx-community/whisper-small-mlx` (~500 MB); on Windows and Linux it is
 `faster-whisper` on the CPU instead (~480 MB). Audio is decoded with
 `afconvert`, so there is no ffmpeg dependency.

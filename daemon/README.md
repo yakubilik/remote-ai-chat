@@ -24,8 +24,9 @@ uv --no-config venv --python 3.12 .venv312
 uv --no-config pip install --python .venv312/bin/python -e . "mlx-whisper>=0.4"
 ```
 
-Python 3.11–3.13. 3.12 specifically if you want voice transcription on Apple
-silicon — mlx-whisper does not build on 3.14.
+Python 3.11–3.13; 3.12 is the version this is run on. Newer Pythons are
+usually held back by mlx-whisper's dependency chain rather than by anything
+here, so if you do not need voice transcription any supported version is fine.
 
 ## Commands
 
