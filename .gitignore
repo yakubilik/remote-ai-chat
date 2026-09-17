@@ -1,0 +1,33 @@
+# dependencies & build output
+node_modules/
+.expo/
+dist/
+app/ios/build/
+app/ios/Pods/
+app/android/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+
+# python
+.venv/
+.venv312/
+__pycache__/
+*.egg-info/
+*.pyc
+
+# local machine state (tokens, chat history, uploads all live here)
+.remote-ai-chat/
+*.sqlite
+*.sqlite-*
+.xcode.env.local
+
+# scratch
+.DS_Store
+*.log
+
+# desktop panel: build output, and artboard screenshots
+daemon/remote_ai_chat/webui/
+design/desktop/.png/
+
+# local build identity (Apple team, EAS project) — never committed
+app/IDENTITY.local.md

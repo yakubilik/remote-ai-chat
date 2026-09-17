@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #C2522D; } a:hover { color: #A3441F; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0F0E0C; color: #F1ECE3; display: flex; flex-direction: column; box-sizing: border-box; padding-top: 50px; overflow: hidden;">
+
+  <!-- Header: back · plan chip (opens limits) · more -->
+  <div style="display: flex; align-items: center; gap: 4px; padding: 0px 8px 8px 8px;">
+    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F1ECE3" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"></path></svg>
+    </div>
+    <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0px;">
+      <div style="display: flex; align-items: center; gap: 7px; height: 34px; padding: 0px 4px 0px 12px; border-radius: 17px; background: #1A1815; border: 1px solid rgba(241,236,227,0.08);">
+        <div style="width: 6px; height: 6px; border-radius: 3px; background: #C2522D;"></div>
+        <div style="font-size: 15px; font-weight: 600; line-height: 20px;">Max</div>
+        <div style="position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">
+          <svg width="30" height="30" viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="12" fill="none" stroke="rgba(241,236,227,0.12)" stroke-width="3.2"></circle>
+            <circle cx="16" cy="16" r="12" fill="none" stroke="#E5B264" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="52 75" transform="rotate(-90 16 16)"></circle>
+          </svg>
+          <div style="position: absolute; font-size: 10px; font-weight: 600; color: #E5B264;">69</div>
+        </div>
+      </div>
+      <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 14px; color: #8C8578;">ask · ~/projects/kuran-app</div>
+    </div>
+    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="#F1ECE3"><circle cx="5.5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="18.5" cy="12" r="1.8"></circle></svg>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 14px; padding: 8px 16px 8px 16px; overflow: hidden;">
+
+    <!-- user: two photos + caption -->
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; width: 232px;">
+        <div style="height: 114px; border-radius: 14px; background: linear-gradient(135deg, #3B4B2E, #C2A24A 70%, #6E8DB5); border: 1px solid rgba(241,236,227,0.08);"></div>
+        <div style="height: 114px; border-radius: 14px; background: linear-gradient(160deg, #2C2F45, #7D9AD1 60%, #E5B264); border: 1px solid rgba(241,236,227,0.08);"></div>
+      </div>
+      <div style="max-width: 280px; background: #2A2722; border-radius: 18px 18px 4px 18px; padding: 10px 14px; font-size: 17px; line-height: 23px;">Bu ekranların spacing'ini karşılaştır, hangisi daha dengeli?</div>
+    </div>
+
+    <!-- assistant text -->
+    <div style="padding-right: 24px; font-size: 17px; line-height: 24px; text-wrap: pretty;">İkincisi daha dengeli: kart aralığı 12px, kenar boşluğu 20px ve başlık ritmi tutarlı. İlkinde üst boşluk fazla.</div>
+
+    <!-- user: voice message -->
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+      <div style="width: 260px; background: #2A2722; border-radius: 18px 18px 4px 18px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 32px; height: 32px; border-radius: 16px; background: #C2522D; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFFFFF"><path d="M7 4v16l13-8z"></path></svg>
+          </div>
+          <div style="display: flex; align-items: center; gap: 2px; height: 28px; flex-grow: 1;">
+            <div style="width: 3px; height: 8px; border-radius: 2px; background: #F1ECE3;"></div><div style="width: 3px; height: 14px; border-radius: 2px; background: #F1ECE3;"></div><div style="width: 3px; height: 22px; border-radius: 2px; background: #F1ECE3;"></div><div style="width: 3px; height: 16px; border-radius: 2px; background: #F1ECE3;"></div><div style="width: 3px; height: 26px; border-radius: 2px; background: #F1ECE3;"></div><div style="width: 3px; height: 12px; border-radius: 2px; background: #F1ECE3;"></div><div style="width: 3px; height: 18px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 24px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 10px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 16px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 20px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 8px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 14px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 22px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 12px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 18px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 9px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 15px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 21px; border-radius: 2px; background: #8C8578;"></div><div style="width: 3px; height: 11px; border-radius: 2px; background: #8C8578;"></div>
+          </div>
+          <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 16px; color: #8C8578; flex-shrink: 0;">0:14</div>
+        </div>
+        <div style="font-size: 14px; line-height: 19px; color: #8C8578;">"Kart başlıklarını 20 yerine 22 punto yap, sonra testleri koştur."</div>
+      </div>
+    </div>
+
+    <!-- tool card -->
+    <div style="border-radius: 12px; background: #1A1815; border: 1px solid rgba(241,236,227,0.08); display: flex; align-items: center; gap: 8px; height: 40px; padding: 0px 12px; margin-right: 24px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C7E4F" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"></path></svg>
+      <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; line-height: 18px; color: #8C8578;">Edit</div>
+      <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; line-height: 18px; flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">src/components/Card.tsx</div>
+      <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 14px; color: #8C8578;">+2 −2</div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8C8578" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"></path></svg>
+    </div>
+
+    <!-- user: video -->
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+      <div style="position: relative; width: 200px; height: 130px; border-radius: 14px; overflow: hidden; background: linear-gradient(150deg, #23282F, #4A5A6C 55%, #1E2A36); border: 1px solid rgba(241,236,227,0.08); display: flex; align-items: center; justify-content: center;">
+        <div style="width: 44px; height: 44px; border-radius: 22px; background: rgba(15,14,12,0.7); display: flex; align-items: center; justify-content: center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#FFFFFF"><path d="M7 4v16l13-8z"></path></svg>
+        </div>
+        <div style="position: absolute; right: 8px; bottom: 8px; padding: 2px 6px; border-radius: 6px; background: rgba(15,14,12,0.7); font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 14px;">0:21</div>
+      </div>
+    </div>
+
+    <!-- assistant streaming -->
+    <div style="padding-right: 24px; font-size: 17px; line-height: 24px; text-wrap: pretty;">Videodaki takılma animasyonun 300ms'lik easing'inden; 200ms ve ease-out ile deneyelim ▍</div>
+  </div>
+
+  <!-- Composer: message on top, then plus · model · mic · send -->
+  <div style="padding: 8px 12px 30px 12px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 26px; background: #1A1815; border: 1px solid rgba(241,236,227,0.08);">
+      <div style="min-height: 36px; padding: 10px 12px 6px 12px; font-size: 17px; line-height: 22px; color: #8C8578;">Message</div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div style="width: 38px; height: 38px; border-radius: 19px; background: #2A2722; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F1ECE3" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; height: 38px; padding: 0px 14px; border-radius: 19px; background: #2A2722;">
+          <div style="font-size: 15px; font-weight: 600; line-height: 20px;">Opus 4.7</div>
+          <div style="font-size: 13px; color: #8C8578; line-height: 18px;">high</div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8C8578" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="width: 38px; height: 38px; border-radius: 19px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F1ECE3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+        </div>
+        <div style="width: 38px; height: 38px; border-radius: 19px; background: #C2522D; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

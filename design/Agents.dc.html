@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    .card { position: relative; width: 165px; height: 206px; border-radius: 22px; overflow: hidden;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 10px 24px rgba(0,0,0,0.35); }
+    .art { position: absolute; inset: 0; }
+    .mark { position: absolute; right: -14px; top: -10px; font-size: 104px; line-height: 1; opacity: 0.22; }
+    .scrim { position: absolute; left: 0; right: 0; bottom: 0; height: 118px; }
+    .txt { position: absolute; left: 14px; right: 14px; bottom: 13px; }
+    .nm { font-family: -apple-system, "SF Pro Display", system-ui, sans-serif;
+          font-size: 19px; font-weight: 600; line-height: 23px; letter-spacing: -0.4px; color: #FFFFFF; }
+    .ds { font-size: 13px; line-height: 17px; letter-spacing: -0.1px; color: rgba(255,255,255,0.72); margin-top: 3px; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0F0E0C; color: #F1ECE3; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="height: 54px;"></div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 0px 12px 0px 20px;">
+    <div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0px 12px; border-radius: 15px; background: #1A1815;">
+      <div style="width: 7px; height: 7px; border-radius: 4px; background: #6FA96F;"></div>
+      <div style="font-size: 13px; font-weight: 500;">MacBook Air</div>
+    </div>
+    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F1ECE3" stroke-width="1.8" stroke-linecap="round"><path d="M3 7h18M3 12h18M3 17h12"></path></svg>
+    </div>
+  </div>
+
+  <div style="padding: 10px 20px 0px 20px;">
+    <div style="display: flex; padding: 3px; border-radius: 11px; background: #1A1815;">
+      <div style="flex: 1; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #8C8578;">Sohbetler</div>
+      <div style="flex: 1; height: 32px; border-radius: 9px; background: #2E2A25; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;">Ajanlar</div>
+    </div>
+  </div>
+
+  <div style="padding: 8px 20px 0px 20px;">
+    <div style="font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif; font-size: 32px; font-weight: 700; line-height: 40px; letter-spacing: -0.8px; padding: 10px 0px 4px 0px;">Ajanlar</div>
+  </div>
+
+  <div style="padding: 10px 20px 0px 20px; display: flex; flex-wrap: wrap; gap: 16px;">
+
+    <div class="card">
+      <div class="art" style="background:
+        radial-gradient(120% 90% at 12% 8%, #E0703F 0%, rgba(224,112,63,0) 62%),
+        radial-gradient(110% 80% at 96% 22%, #8A2F1C 0%, rgba(138,47,28,0) 58%),
+        linear-gradient(168deg, #7A2E19 0%, #2A1710 74%, #1A100C 100%);"></div>
+      <div class="mark">🧪</div>
+      <div class="scrim" style="background: linear-gradient(180deg, rgba(16,10,7,0) 0%, rgba(16,10,7,0.72) 52%, rgba(16,10,7,0.93) 100%);"></div>
+      <div class="txt">
+        <div class="nm">QA denetçisi</div>
+        <div class="ds">Ekranları uçtan uca test eder</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="art" style="background:
+        radial-gradient(120% 90% at 14% 10%, #5FA0F0 0%, rgba(95,160,240,0) 60%),
+        radial-gradient(110% 80% at 94% 26%, #1E3F7A 0%, rgba(30,63,122,0) 58%),
+        linear-gradient(168deg, #23477F 0%, #131F33 76%, #0E141F 100%);"></div>
+      <div class="mark">📐</div>
+      <div class="scrim" style="background: linear-gradient(180deg, rgba(8,12,20,0) 0%, rgba(8,12,20,0.72) 52%, rgba(8,12,20,0.93) 100%);"></div>
+      <div class="txt">
+        <div class="nm">Tasarım denetimi</div>
+        <div class="ds">Kontrata göre gözden geçirir</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="art" style="background:
+        radial-gradient(120% 90% at 12% 8%, #7FC97F 0%, rgba(127,201,127,0) 60%),
+        radial-gradient(110% 80% at 96% 24%, #245A34 0%, rgba(36,90,52,0) 58%),
+        linear-gradient(168deg, #245C38 0%, #12251A 76%, #0D1712 100%);"></div>
+      <div class="mark">🗺️</div>
+      <div class="scrim" style="background: linear-gradient(180deg, rgba(8,16,11,0) 0%, rgba(8,16,11,0.72) 52%, rgba(8,16,11,0.93) 100%);"></div>
+      <div class="txt">
+        <div class="nm">Kod haritacısı</div>
+        <div class="ds">Depoyu çıkarır ve belgeler</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="art" style="background:
+        radial-gradient(120% 90% at 14% 10%, #EFC169 0%, rgba(239,193,105,0) 60%),
+        radial-gradient(110% 80% at 92% 24%, #7A5312 0%, rgba(122,83,18,0) 58%),
+        linear-gradient(168deg, #7B5A1B 0%, #2A2011 76%, #1A150C 100%);"></div>
+      <div class="mark">🐞</div>
+      <div class="scrim" style="background: linear-gradient(180deg, rgba(18,14,7,0) 0%, rgba(18,14,7,0.72) 52%, rgba(18,14,7,0.93) 100%);"></div>
+      <div class="txt">
+        <div class="nm">Hata avcısı</div>
+        <div class="ds">Bilimsel yöntemle ayıklar</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 20px; font-size: 14px; line-height: 19px; letter-spacing: -0.1px; color: #8C8578; text-wrap: pretty;">Bir karta dokun, o ajanla yeni sohbet açılır.</div>
+</div>
+</x-dc>
+</body>
+</html>

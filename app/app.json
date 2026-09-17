@@ -1,0 +1,107 @@
+{
+  "expo": {
+    "name": "Remote AI Chat",
+    "slug": "remote-ai-chat",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0E0C"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.remoteaichat",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "To scan the pairing QR code shown on your computer.",
+        "NSLocalNetworkUsageDescription": "To reach the daemon on your computer over the local network.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "NSFaceIDUsageDescription": "To lock the app, and to confirm before a chat enters bypass mode.",
+        "NSPhotoLibraryUsageDescription": "To attach a photo to a chat.",
+        "NSMicrophoneUsageDescription": "To record a voice message, and to talk to the concierge.",
+        "NSSpeechRecognitionUsageDescription": "To turn what you ask the concierge into text, on the phone."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "remoteaichat",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "The camera is needed to scan the pairing QR code."
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "To attach a photo to a chat."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "To lock the app, and to confirm before a chat enters bypass mode."
+        }
+      ],
+      [
+        "expo-notifications",
+        {}
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "To record a voice message, and to talk to the concierge."
+        }
+      ],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": false,
+          "supportsPictureInPicture": false
+        }
+      ],
+      [
+        "@jamsch/expo-speech-recognition",
+        {
+          "microphonePermission": "To record a voice message, and to talk to the concierge.",
+          "speechRecognitionPermission": "To turn what you ask the concierge into text, on the phone."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "notification": {
+      "color": "#C2522D"
+    },
+    "extra": {
+      "router": {}
+    }
+  }
+}

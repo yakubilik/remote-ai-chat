@@ -1,0 +1,30 @@
+[project]
+name = "remote-ai-chat"
+version = "0.1.0"
+description = "Turn any computer into a remotely controllable Claude Code / Codex server."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "claude-agent-sdk>=0.2.100",
+  "httpx>=0.27",
+  "tomli-w>=1.0",
+  "qrcode>=7.4",
+  "websockets>=12",
+  "pillow>=10",
+  "pillow-heif>=0.16; platform_system != 'Darwin'",
+  "python-multipart>=0.0.9",
+  "mlx-whisper>=0.4; sys_platform == 'darwin'",          # voice transcription on Apple silicon
+  "faster-whisper>=1.0; platform_system != 'Darwin'",    # ... and on Windows / Linux (CPU, CTranslate2)
+  "pywinpty>=2.0; platform_system == 'Windows'",         # ConPTY for driving `claude auth login` from the phone
+]
+
+[project.scripts]
+remote-ai-chat = "remote_ai_chat.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["remote_ai_chat"]

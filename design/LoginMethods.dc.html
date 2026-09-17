@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0F0E0C; color: #F1ECE3; box-sizing: border-box; padding: 58px 20px 0px 20px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+
+  <div style="display: flex; align-items: center; gap: 4px; margin-left: -12px;">
+    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C2522D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"></path></svg>
+    </div>
+    <div style="font-size: 26px; font-weight: 700; line-height: 32px; letter-spacing: -0.4px;">Claude'a giriş</div>
+  </div>
+
+  <div style="font-size: 13px; line-height: 18px; color: #8C8578; text-wrap: pretty; margin-top: -8px;">Bu hesabın nasıl giriş yapacağını seç.</div>
+
+  <div style="display: flex; flex-direction: column; border-radius: 14px; background: #1A1815; overflow: hidden;">
+
+    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-bottom: 1px solid rgba(241,236,227,0.08); background: rgba(194,82,45,0.10);">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C2522D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 1px;"><path d="m5 12 5 5L20 7"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 500; line-height: 20px;">Claude aboneliği</div>
+        <div style="font-size: 12px; line-height: 17px; color: #8C8578;">Telefonda açılan sayfadan giriş. Aboneliğinin kotasını kullanır.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-bottom: 1px solid rgba(241,236,227,0.08);">
+      <div style="width: 20px; height: 20px;"></div>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 500; line-height: 20px;">Anthropic Console</div>
+        <div style="font-size: 12px; line-height: 17px; color: #8C8578;">Kullandıkça öde. Abonelik yerine API faturasına yazılır.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px; border-bottom: 1px solid rgba(241,236,227,0.08);">
+      <div style="width: 20px; height: 20px;"></div>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 500; line-height: 20px;">Kurum girişi (SSO)</div>
+        <div style="font-size: 12px; line-height: 17px; color: #8C8578;">Şirket hesabıyla, kurumunun kimlik sağlayıcısı üzerinden.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: flex-start; gap: 12px; padding: 14px;">
+      <div style="width: 20px; height: 20px;"></div>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <div style="font-size: 15px; font-weight: 500; line-height: 20px;">API anahtarı</div>
+        <div style="font-size: 12px; line-height: 17px; color: #8C8578;">Anahtarı yapıştır. Tarayıcı açılmaz.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 13px; font-weight: 500; letter-spacing: 1.2px; text-transform: uppercase; color: #8C8578;">Başka yol</div>
+    <div style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0px 14px; border-radius: 14px; background: #1A1815;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C2522D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="2.2"></rect><path d="M5 14h-.8A1.2 1.2 0 0 1 3 12.8V4.2A1.2 1.2 0 0 1 4.2 3h8.6A1.2 1.2 0 0 1 14 4.2V5"></path></svg>
+      <div style="font-size: 15px; color: #C2522D; flex-grow: 1;">Başka bilgisayardan taşı</div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8C8578" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"></path></svg>
+    </div>
+  </div>
+
+  <div style="height: 52px; border-radius: 26px; background: #C2522D; display: flex; align-items: center; justify-content: center;">
+    <div style="font-size: 16px; font-weight: 600; color: #FFF6EF;">Devam</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
