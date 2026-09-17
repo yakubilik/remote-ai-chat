@@ -100,8 +100,14 @@ async def main():
             r = await hc.post("/upload", files={"file": ("note.txt", b"hello", "text/plain")}, data={"chat_id": cid}, headers=auth)
             ok("POST /upload", r.status_code == 200, r.text[:100])
             path = r.json().get("path", "")
-            uploads = RAC_HOME / "uploads"
-            ok("upload lands under the daemon's uploads folder", path.lower().startswith(str(uploads).lower()) and os.path.isfile(path), path)
+            # Checked by shape, not by path prefix: RAC_HOME is read from *this*
+            # process's environment, and the daemon under test may well have been
+            # started with a different one. `<something>/uploads/<chat_id>/<file>`
+            # is the property that actually matters, and it holds either way —
+            # that the folder cannot be escaped is the next two checks' job.
+            parts = pathlib.PurePath(path).parts
+            shaped = len(parts) >= 3 and parts[-3].lower() == "uploads" and parts[-2] == cid
+            ok("upload lands in the chat's own uploads folder", shaped and os.path.isfile(path), path)
             r2 = await hc.get("/files", params={"path": path, "token": a.token})
             ok("GET /files round-trips", r2.status_code == 200 and r2.content == b"hello", str(r2.status_code))
             r3 = await hc.get("/files", params={"path": str(RAC_HOME / "config.toml"), "token": a.token})

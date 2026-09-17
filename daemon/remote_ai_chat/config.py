@@ -46,7 +46,17 @@ class Device:
     last_seen: float | None = None
     push_approval: bool = True
     push_done: bool = True
-    lang: str = "en"
+
+
+def _device(did: str, d: dict) -> "Device":
+    """A device row from disk, minus anything this version does not know about.
+
+    A config.toml outlives the daemon that wrote it — downgrade, or a field
+    retired between releases — and a stray key must not stop the daemon from
+    starting. Unknown keys are dropped; the next save writes the current shape.
+    """
+    fields = Device.__dataclass_fields__
+    return Device(id=did, **{k: v for k, v in d.items() if k in fields and k != "id"})
 
 
 @dataclass
@@ -84,7 +94,7 @@ class Config:
             return cfg
         raw = tomllib.loads(CONFIG_PATH.read_text())
         devices = {
-            did: Device(id=did, **d) for did, d in raw.pop("devices", {}).items()
+            did: _device(did, d) for did, d in raw.pop("devices", {}).items()
         }
         accounts = raw.pop("accounts", {})
         cfg = cls(**{k: v for k, v in raw.items() if k in cls.__dataclass_fields__})
@@ -160,7 +170,7 @@ class Config:
             return False
         for did, d in raw.items():
             if did not in self.devices:
-                self.devices[did] = Device(id=did, **d)
+                self.devices[did] = _device(did, d)
         for did in [d for d in self.devices if d not in raw]:
             del self.devices[did]
         return True

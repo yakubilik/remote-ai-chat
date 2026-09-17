@@ -68,8 +68,7 @@ class ChatSession:
         self.last_active = time.monotonic()
         # Wall clock at which the turn now running started, or None between
         # turns. `updated_at` cannot answer this — an approval moves it too —
-        # and "how long has it been at this" is the first thing anyone asks the
-        # concierge over a call.
+        # and "how long has it been at this" is what the chat list wants to say.
         self.turn_started: float | None = None
         self.lock = asyncio.Lock()
         # settings changed since the provider was built; the next turn rebuilds

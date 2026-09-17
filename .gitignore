@@ -25,9 +25,8 @@ __pycache__/
 .DS_Store
 *.log
 
-# desktop panel: build output, and artboard screenshots
+# desktop panel: build output
 daemon/remote_ai_chat/webui/
-design/desktop/.png/
 
 # local build identity (Apple team, EAS project) — never committed
 app/IDENTITY.local.md

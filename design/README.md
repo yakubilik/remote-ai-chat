@@ -1,31 +1,25 @@
-# design — the artboards
+# design
 
-Every screen in this project was drawn before it was built, as a standalone HTML
-file with inline styles and no build step. Open one in a browser and it is
-exactly what the screen should look like, at the size it should look like it.
+Every screen in this project was drawn before it was built. What survives here
+is the part that the code still has to obey: the tokens.
 
-They are kept here because they are still the argument: when the code and the
-artboard disagree about a spacing, a state colour or where a stop button lives,
-the artboard is usually the one that thought about it.
+[TOKENS.md](TOKENS.md) is the whole design system — colour, type scale, spacing,
+radii, the two icon weights. `app/src/theme.ts` and `web/src/lib/theme.ts`
+mirror it, and neither invents a value of its own. If you are adding a screen
+and reach for a colour that is not in that table, the answer is one of the ones
+that is.
 
-```
-design/*.dc.html           the phone, 402×874
-design/desktop/*.dc.html   the desktop panel and shell, 1440×900
-design/canvas.json         the board they were laid out on
-design/desktop/README-shell.md, README-panel.md   what each set decided, and why
-```
+Two rules hold across the interface and are easier to state than to derive from
+the tokens:
 
-Two things to know before reading them:
+**Dark, and only dark.** There is no light theme and there is no toggle. The app
+is read at night, in bed, one-handed, and a theme switch is a setting nobody
+would change twice.
 
-**They are in Turkish.** The interface was drawn in the language it was first
-used in. The product ships English-first — `app/src/i18n.ts` is the real copy —
-so treat the artboards as layout, state and colour, not as wording.
+**Nothing moves that was not touched.** A stream arriving, a tool finishing, an
+approval appearing — none of those may reflow what is already on screen. The
+list grows downward and the eye stays where it was.
 
-**Every value in them is fake.** Addresses are masked (`100.•••.•••.42`),
-pairing codes are masked, the QR codes are stylised 21×21 grids rather than real
-ones, and the accounts and folder names are invented. Nothing here was captured
-from a running machine.
-
-Colours and metrics are in `design/desktop/TOKENS.md`, which the code mirrors
-in `app/src/theme.ts` and `web/src/lib/theme.ts`. Nothing in an artboard
-introduces a colour of its own.
+For what the screens actually look like, see the screenshots in the
+[repository README](../README.md); they are captured from the running app rather
+than drawn.

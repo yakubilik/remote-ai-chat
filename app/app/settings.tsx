@@ -200,11 +200,6 @@ export default function Settings() {
           </Text>
         </View>
 
-        <View style={{ gap: 8 }}>
-          <Label>{T('language')}</Label>
-          <Segmented options={['en', 'tr']} value={prefs.lang} onChange={(l) => setPrefs({ lang: l })} labels={{ en: T('english'), tr: T('turkish') }} />
-        </View>
-
         {hostInfo && (
           <View style={{ gap: 8 }}>
             <Label>{T('host')}</Label>

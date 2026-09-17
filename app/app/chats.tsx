@@ -8,7 +8,7 @@ import { useStore, useT } from '../src/store';
 import { useNavGuard } from '../src/nav';
 import { LOCALE } from '../src/i18n';
 import { colors, radius, type, providerColor } from '../src/theme';
-import { ArchiveIcon, Chevron, ChevronDown, Chips, Compose, FlatIcon, Gear, GroupedIcon, Phone, PinIcon, ProviderGlyph, Search, SkeletonRows, Spinner } from '../src/components/ui';
+import { ArchiveIcon, Chevron, ChevronDown, Chips, Compose, FlatIcon, Gear, GroupedIcon, PinIcon, ProviderGlyph, Search, SkeletonRows, Spinner } from '../src/components/ui';
 import type { Chat } from '../src/protocol';
 
 /** The one section the flat view draws. It is never shown as a heading, so it
@@ -51,7 +51,7 @@ export default function Chats() {
       setShowArchived: s.setShowArchived, setPrefs: s.setPrefs,
     })));
   const T = useT();
-  const locale = LOCALE[useStore((s) => s.prefs.lang)];
+  const locale = LOCALE;
   const [q, setQ] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -211,7 +211,6 @@ export default function Chats() {
           <ChevronDown size={12} />
         </Pressable>
         <View style={{ flexDirection: 'row' }}>
-          <Pressable onPress={() => go(() => router.push('/call'))} style={styles.iconBtn}><Phone /></Pressable>
           <Pressable onPress={() => go(() => router.push('/settings'))} style={styles.iconBtn}><Gear /></Pressable>
           <Pressable onPress={quickNew} onLongPress={() => go(() => router.push('/new-chat'))} style={styles.iconBtn}><Compose /></Pressable>
         </View>

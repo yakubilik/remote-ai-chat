@@ -53,7 +53,6 @@ export function LimitsRing({ accountId, provider, label, sub, dot }: {
   accountId?: string | null; provider?: string; label?: string; sub?: string; dot?: string;
 }) {
   const T = useT();
-  const lang = useStore((s) => s.prefs.lang);
   const all = useStore((s) => s.limits);
   const [open, setOpen] = useState(false);
   const key = accountId || `default-${provider ?? 'claude'}`;
@@ -109,7 +108,7 @@ export function LimitsRing({ accountId, provider, label, sub, dot }: {
                       {NAME[w.window] ? T(NAME[w.window]) : w.window}
                     </Text>
                     <Text style={[type.caption, { color: colors.muted, letterSpacing: 0 }]}>
-                      {resetLabel(w.resets_at, LOCALE[lang], T)}
+                      {resetLabel(w.resets_at, LOCALE, T)}
                     </Text>
                   </View>
                   <View style={styles.bar}>

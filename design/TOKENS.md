@@ -1,7 +1,8 @@
 # remote-ai-chat — design tokens
 
-Extracted mechanically from `design/*.dc.html` (the phone artboards). The
-desktop artboards must NOT drift from these values. Do not invent a new colour.
+The whole palette and scale, in one place. `app/src/theme.ts` and
+`web/src/lib/theme.ts` mirror these values; nothing in either may drift from
+them, and nothing may introduce a colour that is not here.
 
 ## Colour
 | role | value | used for |

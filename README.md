@@ -36,8 +36,8 @@ What that gets you, in practice:
   you have left.
 - **Turns survive the tunnel.** Close the app, lose signal, get on the subway —
   the turn keeps running on the computer, and the phone catches up on reconnect.
-- **Voice, because a bus is not a desk.** Dictate a message, or call a
-  concierge that tells you what your machine is doing right now.
+- **Voice, because a bus is not a desk.** Record a message and the computer
+  transcribes it; the agent gets text, and the bubble keeps the audio.
 
 ---
 
@@ -50,7 +50,6 @@ What that gets you, in practice:
 | <img src="docs/screenshots/approval.png" width="230"> | **The approval.** In `ask` mode every shell command stops here. A dangerous one stops here even in `bypass`. |
 | <img src="docs/screenshots/new-chat.png" width="230"> | **Starting one.** Pick the tool, the model, how hard it should think, how much rope it gets, and which folder it opens in. |
 | <img src="docs/screenshots/settings.png" width="230"> | **Settings.** Several computers, several sign-ins per tool, and a daemon that follows `origin/main` on its own. |
-| <img src="docs/screenshots/concierge.png" width="230"> | **The concierge.** A phone call to your computer. It says what is running and what is waiting; it cannot start work — that is what chats are for. |
 
 ### And a desktop panel
 

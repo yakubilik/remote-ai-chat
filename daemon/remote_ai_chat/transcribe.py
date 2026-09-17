@@ -63,13 +63,12 @@ def _decode(src: Path):
     return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
 
 
-def _transcribe_mlx(path: Path, lang: str | None) -> dict | None:
+def _transcribe_mlx(path: Path) -> dict | None:
     import mlx_whisper
     audio = _decode(path)
-    kw = {"path_or_hf_repo": MODEL}
-    if lang in ("en", "tr"):
-        kw["language"] = lang
-    out = mlx_whisper.transcribe(audio, **kw)
+    # No `language=`: whisper detects it, and forcing one makes it *translate*
+    # a note spoken in another language instead of transcribing it.
+    out = mlx_whisper.transcribe(audio, path_or_hf_repo=MODEL)
     text = (out.get("text") or "").strip()
     return {"text": text, "language": out.get("language")} if text else None
 
@@ -85,32 +84,32 @@ def _fw():
     return _fw_model
 
 
-def _transcribe_faster(path: Path, lang: str | None) -> dict | None:
+def _transcribe_faster(path: Path) -> dict | None:
     model = _fw()
-    # Let whisper detect the spoken language. `lang` is the phone's UI language,
-    # and forcing it makes whisper *translate* a Turkish note into English when
-    # the UI is English (detection on real speech is reliable, see smoke.py).
+    # Same reasoning as the mlx path: detection on real speech is reliable
+    # (see smoke.py), and forcing a language turns transcription into
+    # translation.
     segments, info = model.transcribe(str(path), language=None, beam_size=5)
     text = " ".join(s.text.strip() for s in segments).strip()
     return {"text": text, "language": getattr(info, "language", None)} if text else None
 
 
-def _transcribe_sync(path: Path, lang: str | None) -> dict | None:
+def _transcribe_sync(path: Path) -> dict | None:
     backend = _backend()
     if backend == "mlx":
-        return _transcribe_mlx(path, lang)
+        return _transcribe_mlx(path)
     if backend == "faster":
-        return _transcribe_faster(path, lang)
+        return _transcribe_faster(path)
     return None
 
 
-async def transcribe(path: Path, lang: str | None = None) -> dict | None:
+async def transcribe(path: Path) -> dict | None:
     if not available():
         return None
     # The very first call may have to download the model; give it longer.
     timeout = 240 if (_backend() == "mlx" or _fw_model is not None) else 900
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_transcribe_sync, path, lang), timeout=timeout)
+        return await asyncio.wait_for(asyncio.to_thread(_transcribe_sync, path), timeout=timeout)
     except Exception as exc:
         log.warning("transcription failed: %s", exc)
         return None

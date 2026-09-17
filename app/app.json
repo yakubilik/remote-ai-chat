@@ -25,8 +25,7 @@
         },
         "NSFaceIDUsageDescription": "To lock the app, and to confirm before a chat enters bypass mode.",
         "NSPhotoLibraryUsageDescription": "To attach a photo to a chat.",
-        "NSMicrophoneUsageDescription": "To record a voice message, and to talk to the concierge.",
-        "NSSpeechRecognitionUsageDescription": "To turn what you ask the concierge into text, on the phone."
+        "NSMicrophoneUsageDescription": "To record a voice message for the agent to transcribe."
       }
     },
     "android": {
@@ -76,7 +75,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "To record a voice message, and to talk to the concierge."
+          "microphonePermission": "To record a voice message for the agent to transcribe."
         }
       ],
       [
@@ -84,13 +83,6 @@
         {
           "supportsBackgroundPlayback": false,
           "supportsPictureInPicture": false
-        }
-      ],
-      [
-        "@jamsch/expo-speech-recognition",
-        {
-          "microphonePermission": "To record a voice message, and to talk to the concierge.",
-          "speechRecognitionPermission": "To turn what you ask the concierge into text, on the phone."
         }
       ]
     ],

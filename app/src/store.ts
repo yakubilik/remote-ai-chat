@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback } from 'react';
 import { client, type ConnStatus } from './ws';
-import { t as tt, setLang, type Key, type Lang } from './i18n';
+import { t as tt, type Key } from './i18n';
 import type { Agent, Catalog, Chat, CliAccount, LimitWindow, LimitsEvent, UpdateStatus, StoreSource, Provider, Defaults, Group, HostConfig, HostInfo, LoginDone, LoginPrompt, Project, RacEvent, ToolStatus } from './protocol';
 
 const HOSTS_KEY = 'rac.hosts';
@@ -19,10 +19,7 @@ export interface StoredHost extends HostConfig { id: string }
  *  same list can be read either way and only the person reading it knows which. */
 export type ChatView = 'grouped' | 'flat';
 export interface Prefs {
-  faceIdLaunch: boolean; faceIdBypass: boolean; lang: Lang; chatView: ChatView;
-  // Which voice reads the concierge's answers, per language. Chosen on the call
-  // screen; empty means "whatever the phone has that sounds best".
-  voiceIds?: Partial<Record<Lang, string>>;
+  faceIdLaunch: boolean; faceIdBypass: boolean; chatView: ChatView;
 }
 export interface DeviceInfo { id: string; name: string; push_approval: boolean; push_done: boolean; has_push_token: boolean }
 export interface Attachment { path: string; name: string; size?: number; kind?: 'image' | 'video' | 'audio' | 'file'; url?: string; transcript?: string; duration?: number; localUri?: string }
@@ -138,7 +135,7 @@ const DEFAULTS: Defaults = { provider: 'claude', model: 'opus', effort: 'high', 
 export function agentAccountOf(d: Defaults): string | null {
   return d.agentAccountId !== undefined ? d.agentAccountId : (d.byProvider?.claude?.account_id ?? null);
 }
-const PREFS: Prefs = { faceIdLaunch: false, faceIdBypass: true, lang: 'en', chatView: 'grouped', voiceIds: {} };
+const PREFS: Prefs = { faceIdLaunch: false, faceIdBypass: true, chatView: 'grouped' };
 
 async function loadJSON<T>(key: string, fallback: T): Promise<T> {
   try {
@@ -211,7 +208,7 @@ export const useStore = create<State>((set, get) => {
 
   async function afterConnect(attempt = 0): Promise<void> {
     try {
-      const hello = await client.call('hello', { device_name: 'iPhone', push_token: get().pushToken ?? undefined, lang: get().prefs.lang });
+      const hello = await client.call('hello', { device_name: 'iPhone', push_token: get().pushToken ?? undefined });
       set({ hostInfo: hello.host, catalog: hello.catalog, device: hello.device ?? null });
       // What the computer already knows about the plan, so the ring is filled
       // in before the first turn rather than after it.
@@ -395,7 +392,6 @@ export const useStore = create<State>((set, get) => {
       const defaults = await loadJSON(DEFAULTS_KEY, DEFAULTS);
       const prefs = await loadJSON(PREFS_KEY, PREFS);
       const host = hosts.find((h) => h.id === active) ?? null;
-      setLang(prefs.lang);
       set({ hosts, activeHostId: active, host, defaults, prefs, locked: prefs.faceIdLaunch, ready: true });
       if (host) client.connect(host.host, host.port, host.token);
     },
@@ -434,10 +430,8 @@ export const useStore = create<State>((set, get) => {
 
     setPrefs: async (p) => {
       const prefs = { ...get().prefs, ...p };
-      setLang(prefs.lang);
       set({ prefs });
       await SecureStore.setItemAsync(PREFS_KEY, JSON.stringify(prefs));
-      if (p.lang && get().conn === 'online') void client.call('device.prefs', { lang: p.lang }).catch(() => {});
     },
 
     setDevicePrefs: async (p) => {
@@ -709,7 +703,14 @@ export const useStore = create<State>((set, get) => {
 
 function guessMime(name: string) {
   const ext = name.split('.').pop()?.toLowerCase();
-  return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', pdf: 'application/pdf' } as Record<string, string>)[ext ?? ''] || 'application/octet-stream';
+  return ({
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic',
+    mp4: 'video/mp4', mov: 'video/quicktime', m4a: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav',
+    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', zip: 'application/zip',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  } as Record<string, string>)[ext ?? ''] || 'application/octet-stream';
 }
 
 export interface TimelineItem {
@@ -771,10 +772,10 @@ function groupTools(items: TimelineItem[]): TimelineItem[] {
   return out;
 }
 
-/** Translation hook: re-renders when the language pref changes. */
+/** Every screen's handle on the string table. A hook rather than a bare import
+ *  so that the day a second language exists, nothing but this file changes. */
 export function useT() {
-  const lang = useStore((s) => s.prefs.lang);
-  return useCallback((key: Key, params?: Record<string, string | number>) => tt(key, params, lang), [lang]);
+  return useCallback((key: Key, params?: Record<string, string | number>) => tt(key, params), []);
 }
 
 /** Absolute, authenticated URL for a file that lives on the active computer. */

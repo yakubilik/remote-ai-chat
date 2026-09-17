@@ -25,9 +25,6 @@ Two things this is **not**, both of which sessions have confused it with:
   describing a different project that happens to share this machine. A session
   started by this daemon has the working directory and roots named in its own
   `<session-context>` block, and nothing else.
-* **The concierge** (`~/.remote-ai-chat/concierge.md`) — a separate persona that
-  watches sessions and reports on them in the app. It is not you, and its
-  register is not yours to borrow.
 
 ## Runtime
 

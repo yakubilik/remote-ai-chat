@@ -119,7 +119,6 @@ export const Dots = ({ size = 18, color = colors.muted }: { size?: number; color
   <I size={size} color={color}><Circle cx="5" cy="12" r="1.9" fill={color} stroke="none" /><Circle cx="12" cy="12" r="1.9" fill={color} stroke="none" /><Circle cx="19" cy="12" r="1.9" fill={color} stroke="none" /></I>
 );
 export const Plus = ({ color = colors.muted }: { color?: string }) => <I size={24} color={color}><Path d="M12 5v14M5 12h14" /></I>;
-export const Phone = ({ size = 22, color = colors.text }: { size?: number; color?: string }) => <I size={size} color={color} sw={1.8}><Path d="M6.5 3h3l1.5 4.5-2 1.5a12 12 0 0 0 6 6l1.5-2L21 14.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4 5.2 2 2 0 0 1 6 3Z" /></I>;
 export const Search = () => <I size={18} color={colors.muted}><Circle cx="11" cy="11" r="7" /><Path d="m20 20-3.5-3.5" /></I>;
 /** A spinner that actually spins — a static arc reads as a frozen app. */
 /** Placeholder shapes for a list that has not answered yet. A list rendered

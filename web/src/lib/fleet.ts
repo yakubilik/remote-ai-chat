@@ -278,7 +278,7 @@ function attach(cfg: HostConfig, set: Setter, get: () => FleetState) {
       lastOnline: status === 'online' ? Date.now() : slot.lastOnline,
     }));
     if (status === 'online') {
-      c.call('hello', { device_name: cfg.name || 'Panel', lang: 'tr' })
+      c.call('hello', { device_name: cfg.name || 'Panel' })
         .then((r: any) => patch(set, key, (slot) => ({
           ...slot, info: r.host ?? slot.info, catalog: r.catalog ?? slot.catalog,
         })))

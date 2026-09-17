@@ -52,7 +52,6 @@ its own config, database, uploads and port. That is what the tests run against.
 | `providers/` | `claude.py` and `codex.py` — the two adapters, behind one interface. |
 | `security.py` | Dangerous-command patterns, the path fence, secret redaction. |
 | `config.py` | `config.toml`, devices, token hashes, `allowed_roots`. |
-| `call.py` | The concierge: a snapshot of what is running, and four tools over it. |
 | `agents.py` | Agent definitions, and the store that lists them. |
 | `updater.py` | Follows `origin/main` and lets the supervisor restart it. |
 | `push.py`, `transcribe.py`, `errors.py`, `preamble.py`, `db.py` | The rest. |
@@ -65,7 +64,6 @@ python scripts/e2e.py   --token TOKEN --image <an uploaded file>
 python scripts/test_preamble.py [--live]
 python scripts/test_session.py
 python scripts/test_stream.py
-python scripts/call_bench.py --token TOKEN
 ```
 
 `smoke.py` spends no model turns and is the one to run right after installing.

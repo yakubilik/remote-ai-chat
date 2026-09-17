@@ -206,7 +206,7 @@ function HostCard({ slot, known }: { slot: HostSlot; known: number }) {
       }}>
         {info
           ? `${info.os}${info.os_version ? ` ${info.os_version}` : ''} · daemon ${info.daemon_version}`
-          : 'daemon bilgisi yok'}
+          : 'no daemon information'}
       </div>
 
       {online && info ? (

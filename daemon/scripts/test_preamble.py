@@ -124,11 +124,11 @@ async def live() -> None:
     p = ClaudeProvider(cfg, emit, approval)
 
     try:
-        print("\nasked how it is being reached, in Turkish")
-        res = await p.run("sana nerden yazıyorum ben? kısaca söyle")
+        print("\nasked how it is being reached")
+        res = await p.run("where am I writing to you from? briefly")
         answer = " ".join(said).lower()
         check(not res.error, "the turn completed", f"error={res.error}")
-        check(bool(re.search(r"remote[- ]?ai[- ]?chat|uygulama|app|telefon", answer)),
+        check(bool(re.search(r"remote[- ]?ai[- ]?chat|app|phone", answer)),
               "it names the app it is actually reached through", f"said={answer[:200]!r}")
         # Any other chat bridge sharing this machine is the wrong answer; the
         # session must name the app it is actually reached through.
@@ -138,12 +138,12 @@ async def live() -> None:
 
         print("\na greeting is not a subject")
         said.clear()
-        res = await p.run("naber")
+        res = await p.run("hey")
         reply = " ".join(said).strip()
         check(not res.error, "the turn completed", f"error={res.error}")
         check(len(reply) < 400, "a greeting gets a greeting back",
               f"{len(reply)} chars: {reply[:200]!r}")
-        check(not re.search(r"yapay zeka|asistan|size nasıl yardımcı", reply.lower()),
+        check(not re.search(r"\bai\b|language model|assistant|how can i (help|assist)", reply.lower()),
               "and no assistant boilerplate", f"said={reply[:200]!r}")
     finally:
         await p.close()

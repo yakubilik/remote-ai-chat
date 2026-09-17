@@ -382,7 +382,7 @@ function LoginSheet({ hostKey, account, methods, onClose, onFinished }: {
 
             {prompt?.code && (
               <div style={{ marginTop: 14 }}>
-                <Label>sayfaya bu kodu gir</Label>
+                <Label>enter this code on the page</Label>
                 <div style={{
                   ...mono, fontSize: 20, letterSpacing: 3, color: C.text, padding: '10px 12px',
                   background: C.bg, border: `1px solid ${C.border}`, borderRadius: R.input,
@@ -845,7 +845,7 @@ function ToolsSection({ tools, npm, loading, problem, onReload }: {
           <Icon path={P.bolt} size={16} color={C.mute} />
           <div style={{ flex: 1, fontSize: 13.5 }}>npm</div>
           <span style={{ ...mono, fontSize: 12, color: npm ? C.text2 : C.faint }}>
-            {npm == null ? '—' : npm ? 'var' : 'yok'}
+            {npm == null ? '—' : npm ? 'present' : 'missing'}
           </span>
         </div>
       </Card>

@@ -5,7 +5,7 @@
 
 The transcript used to come out shredded: a sentence would stop mid-word, a tool
 card would sit in the gap, and the rest of the word would open the next bubble
-("...editoryal t" | Bash | "asarım"). Nothing was lost, but it was unreadable.
+("...the editorial la" | Bash | "yout"). Nothing was lost, but it was unreadable.
 
 The cause is that `receive_response()` can hand over a parsed AssistantMessage —
 tool call included — before the raw text deltas behind it have all arrived. The
@@ -140,7 +140,7 @@ async def scenario_tool_arrives_early() -> None:
     """The exact shape that shredded the transcript: the AssistantMessage lands
     between two deltas of the text block it belongs to."""
     print("a tool call that overtakes the text it follows")
-    sentence = "Üçü de paralel çalışıyor, lacivert/turuncu editoryal tasarım."
+    sentence = "All three run in parallel, in a navy and orange editorial layout."
     head, tail = sentence[:45], sentence[45:]
     seen = await run([
         msg_start(), block_start(), delta(head),
@@ -160,13 +160,13 @@ async def scenario_ordinary_turn() -> None:
     """Text, tool, more text — nothing clever, and still in order."""
     print("\ntext, then a tool, then more text")
     seen = await run([
-        msg_start(), block_start(), delta("Bakıyorum."), block_stop(),
-        assistant(TextBlock(text="Bakıyorum."), ToolUseBlock(id="t1", name="Bash", input={"command": "ls"})),
-        msg_start(), block_start(), delta("Buldum."), block_stop(),
-        assistant(TextBlock(text="Buldum.")),
+        msg_start(), block_start(), delta("Taking a look."), block_stop(),
+        assistant(TextBlock(text="Taking a look."), ToolUseBlock(id="t1", name="Bash", input={"command": "ls"})),
+        msg_start(), block_start(), delta("Found it."), block_stop(),
+        assistant(TextBlock(text="Found it.")),
         result(),
     ])
-    check(texts(seen) == ["Bakıyorum.", "Buldum."], "both messages land", f"got={texts(seen)!r}")
+    check(texts(seen) == ["Taking a look.", "Found it."], "both messages land", f"got={texts(seen)!r}")
     check(kinds(seen) == ["message.assistant", "tool.use", "message.assistant"],
           "in the order the model wrote them", f"got={kinds(seen)}")
 
@@ -176,10 +176,10 @@ async def scenario_no_deltas() -> None:
     print("\na message that never streamed a delta")
     seen = await run([
         msg_start(),
-        assistant(TextBlock(text="Tek parça."), ToolUseBlock(id="t1", name="Bash", input={"command": "ls"})),
+        assistant(TextBlock(text="One piece."), ToolUseBlock(id="t1", name="Bash", input={"command": "ls"})),
         result(),
     ])
-    check(texts(seen) == ["Tek parça."], "the fallback still delivers it once", f"got={texts(seen)!r}")
+    check(texts(seen) == ["One piece."], "the fallback still delivers it once", f"got={texts(seen)!r}")
     check(kinds(seen).count("message.assistant") == 1, "and exactly once, not twice",
           f"got={kinds(seen)}")
 
@@ -189,8 +189,8 @@ async def scenario_result_before_stop() -> None:
     print("\na tool result that beats content_block_stop")
     from claude_agent_sdk.types import ToolResultBlock, UserMessage
     seen = await run([
-        msg_start(), block_start(), delta("Çalıştırıyorum."),
-        assistant(TextBlock(text="Çalıştırıyorum."), ToolUseBlock(id="t1", name="Bash", input={"command": "ls"})),
+        msg_start(), block_start(), delta("Running it now."),
+        assistant(TextBlock(text="Running it now."), ToolUseBlock(id="t1", name="Bash", input={"command": "ls"})),
         UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="ok")]),
         block_stop(),
         result(),
@@ -199,15 +199,15 @@ async def scenario_result_before_stop() -> None:
     check("tool.use" in order and "tool.result" in order, "both the call and its answer are there")
     check(order.index("tool.use") < order.index("tool.result"),
           "the call is never reported after its own answer", f"got={order}")
-    check(texts(seen) == ["Çalıştırıyorum."], "and the text is still whole", f"got={texts(seen)!r}")
+    check(texts(seen) == ["Running it now."], "and the text is still whole", f"got={texts(seen)!r}")
 
 
 async def scenario_multiple_tools() -> None:
     """Two calls in one message keep their order behind the same text."""
     print("\ntwo tool calls in one message")
     seen = await run([
-        msg_start(), block_start(), delta("İkisini birden."),
-        assistant(TextBlock(text="İkisini birden."),
+        msg_start(), block_start(), delta("Both at once."),
+        assistant(TextBlock(text="Both at once."),
                   ToolUseBlock(id="t1", name="Bash", input={"command": "a"}),
                   ToolUseBlock(id="t2", name="Bash", input={"command": "b"})),
         block_stop(),
@@ -215,7 +215,7 @@ async def scenario_multiple_tools() -> None:
     ])
     ids = [e["id"] for e in seen if e["event"] == "tool.use"]
     check(ids == ["t1", "t2"], "both cards, in the order they were called", f"got={ids}")
-    check(texts(seen) == ["İkisini birden."], "text unaffected", f"got={texts(seen)!r}")
+    check(texts(seen) == ["Both at once."], "text unaffected", f"got={texts(seen)!r}")
 
 
 async def scenario_unasked_turn() -> None:
@@ -316,7 +316,7 @@ async def scenario_housekeeping_is_not_a_turn() -> None:
               f"spoken={p._spoken}")
 
         # ...and real speech still is
-        cli.say(assistant(TextBlock(text="Arka plan ajanı bitti.")))
+        cli.say(assistant(TextBlock(text="The background agent finished.")))
         await asyncio.sleep(0.05)
         check(p.has_pending(), "unasked speech is still pending")
     finally:
@@ -362,9 +362,9 @@ async def scenario_background_agent_is_not_a_turn() -> None:
 
     p.on_idle_output = on_idle
     try:
-        cli.say(msg_start(), block_start(), delta("Ajanı başlattım."), block_stop(),
-                assistant(TextBlock(text="Ajanı başlattım.")), result())
-        await p.run("arka planda bir ajan çalıştır")
+        cli.say(msg_start(), block_start(), delta("I started the agent."), block_stop(),
+                assistant(TextBlock(text="I started the agent.")), result())
+        await p.run("run an agent in the background")
 
         # the helper works on, long after the turn that launched it ended
         helper = "toolu_bg1"
@@ -380,7 +380,7 @@ async def scenario_background_agent_is_not_a_turn() -> None:
         check(not opened, "and opens no turn of its own", f"opened={len(opened)}")
 
         # the model itself, speaking unasked, still does
-        cli.say(assistant(TextBlock(text="Ajan bitti, sonuç şu.")))
+        cli.say(assistant(TextBlock(text="The agent finished; here is the result.")))
         await asyncio.sleep(0.05)
         check(p.has_pending(), "the model speaking unasked still is")
         check(len(opened) == 1, "and that one does open a turn", f"opened={len(opened)}")

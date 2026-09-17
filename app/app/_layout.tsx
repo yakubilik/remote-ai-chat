@@ -65,9 +65,6 @@ export default function RootLayout() {
         {/* The computer list is a handful of rows, so the sheet hugs it: a fixed
             detent both left dead space below and clipped the last row mid-height. */}
         <Stack.Screen name="host-sheet" options={{ presentation: 'formSheet', sheetAllowedDetents: 'fitToContents', sheetGrabberVisible: true, sheetCornerRadius: 22, contentStyle: { backgroundColor: colors.surface } }} />
-        {/* A call is a mode, not a place: it comes up over whatever you were
-            reading and leaves it exactly where it was. */}
-        <Stack.Screen name="call" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings" />
         <Stack.Screen name="agents" />
         <Stack.Screen name="agent-store" />

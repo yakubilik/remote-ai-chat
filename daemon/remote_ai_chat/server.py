@@ -22,7 +22,6 @@ from .db import DB
 from . import accounts as acct
 from .errors import Err
 from . import agents, tools
-from .call import Concierge, headline as call_headline, snapshot as call_snapshot
 from .push import send_push
 from .transcribe import transcribe, available as transcribe_available
 from .security import PathPolicy
@@ -31,17 +30,17 @@ from .providers.codex import live_models as codex_live_models
 
 log = logging.getLogger("rac.server")
 
+# Only the media extensions need naming: an image is normalized, a video gets a
+# player, audio is transcribed. Everything else is just "file" — the upload is
+# handed to the agent as a path, so there is no reason to keep an allowlist and
+# reject a .pptx, a .zip or a .docx the agent could read perfectly well.
 KINDS = {
     ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image", ".webp": "image", ".heic": "image",
     ".mp4": "video", ".mov": "video", ".m4v": "video",
     ".m4a": "audio", ".mp3": "audio", ".wav": "audio", ".ogg": "audio", ".caf": "audio", ".aac": "audio",
-    ".pdf": "file", ".txt": "file", ".md": "file", ".json": "file", ".csv": "file", ".log": "file",
 }
 
-PUSH_TEXT = {
-    "en": {"approval": "Approval pending", "done": "Task finished"},
-    "tr": {"approval": "Onay bekliyor", "done": "İş tamamlandı"},
-}
+PUSH_TEXT = {"approval": "Approval pending", "done": "Task finished"}
 
 
 # ── git status (for the panel) ───────────────────────────────────────────────
@@ -134,10 +133,6 @@ class Server:
         self._versions: dict | None = None
         self._codex_models: list[dict] | None = None
         self._codex_models_task: asyncio.Task | None = None
-        # The voice concierge. Built here but not connected — the CLI only
-        # starts when somebody actually asks it something.
-        self.concierge = Concierge(self.call_snapshot, self._concierge_account,
-                                   self._concierge_actions())
 
     def _mount_panel(self) -> None:
         """Serve the desktop panel, when it has been built.
@@ -153,7 +148,7 @@ class Server:
         from fastapi.staticfiles import StaticFiles
         self.app.mount("/", StaticFiles(directory=str(panel), html=True), name="panel")
 
-    # ── tools (CLI kurulumu) ───────────────────────────────────────────────
+    # ── tools (installing the CLIs) ────────────────────────────────────────
     async def h_tool_status(self, dev: Device, d: dict) -> dict:
         tools.forget()
         return {"tools": [{"provider": p, "version": tools.version(p),
@@ -343,13 +338,13 @@ class Server:
             if not d.push_token:
                 continue
             if kind == "approval" and d.push_approval:
-                body = PUSH_TEXT.get(d.lang, PUSH_TEXT["en"])["approval"]
+                body = PUSH_TEXT["approval"]
             elif kind == "done" and d.push_done:
                 # Sent to connected phones too. A phone that is looking at this
                 # very chat silences it itself — the computer cannot know what
                 # is on screen, and staying silent for every open app meant the
                 # notification never arrived at all.
-                body = PUSH_TEXT.get(d.lang, PUSH_TEXT["en"])["done"]
+                body = PUSH_TEXT["done"]
             else:
                 continue
             await send_push([d.push_token], title, body, {"chat_id": chat.get("id"), "kind": kind})
@@ -363,10 +358,8 @@ class Server:
         safe_chat = "".join(c for c in (chat_id or "misc") if c.isalnum())[:32] or "misc"
         name = Path(file.filename or "file").name
         stem = "".join(c for c in Path(name).stem if c.isalnum() or c in "-_")[:40] or "file"
-        ext = Path(name).suffix.lower()[:8]
-        kind = KINDS.get(ext)
-        if kind is None:
-            raise HTTPException(status_code=415, detail="unsupported file type")
+        ext = Path(name).suffix.lower()[:12]
+        kind = KINDS.get(ext, "file")
         target_dir = UPLOAD_DIR / safe_chat
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / f"{int(time.time())}-{stem}{ext}"
@@ -379,7 +372,7 @@ class Server:
         out = {"path": str(target), "name": target.name, "size": target.stat().st_size, "kind": kind,
                "url": f"/files?path={target}"}
         if kind == "audio":
-            t = await transcribe(target, dev.lang)
+            t = await transcribe(target)
             if t:
                 out["transcript"] = t["text"]
         return out
@@ -479,8 +472,6 @@ class Server:
             dev.push_token = d["push_token"]
         if d.get("device_name"):
             dev.name = d["device_name"]
-        if d.get("lang") in ("en", "tr"):
-            dev.lang = d["lang"]
         self.cfg.save()
         return {"host": self.host_info(), "catalog": await self.catalog_async(),
                 "device": {"id": dev.id, "name": dev.name, "push_approval": dev.push_approval,
@@ -496,8 +487,6 @@ class Server:
             dev.push_done = bool(d["push_done"])
         if "push_token" in d:
             dev.push_token = d["push_token"] or None
-        if d.get("lang") in ("en", "tr"):
-            dev.lang = d["lang"]
         self.cfg.save()
         return {"push_approval": dev.push_approval, "push_done": dev.push_done, "has_push_token": bool(dev.push_token)}
 
@@ -658,95 +647,6 @@ class Server:
         if not ok:
             raise Err("no_pending_approval", "no pending approval")
         return {}
-
-    # ── the call ───────────────────────────────────────────────────────────
-    # A phone call is a different shape of question than a chat. Nobody wants a
-    # coding agent read out loud; they want to know whether the thing finished.
-    # So the concierge is answered from the daemon's own state, and never waits
-    # for a session's turn — see call.py.
-
-    def call_snapshot(self):
-        return call_snapshot(self.db, self.sessions, self.cfg.host_name)
-
-    def _concierge_actions(self) -> dict:
-        """The four things the concierge may do, as the daemon already does them.
-
-        Each one goes through the same path the phone's own buttons use, so a
-        session started by voice is a session like any other: same permission
-        mode, same approvals coming back to the phone, same place in the list.
-        Nothing here is a shortcut around the session layer."""
-
-        async def send(chat_id: str, text: str) -> bool:
-            return await self.sessions.get(chat_id).send(text.strip(), None)
-
-        async def start(project: str, instruction: str) -> str:
-            want = project.strip().casefold()
-            hits = [p for p in self.policy.list_projects()
-                    if p["name"].casefold() == want]
-            if not hits:
-                hits = [p for p in self.policy.list_projects()
-                        if want and want in p["name"].casefold()]
-            if not hits:
-                raise Err("no_project", f"there is no project called {project}")
-            cwd = hits[0]["path"]
-            chat = await self.h_chat_create(None, {"cwd": cwd, "title": instruction[:60]})
-            await self.sessions.get(chat["id"]).send(instruction.strip(), None)
-            return hits[0]["name"]
-
-        async def approve(chat_id: str, allow: bool) -> None:
-            s = self.sessions.peek(chat_id)
-            if not s or not s.pending:
-                raise Err("no_pending_approval", "nothing is waiting there")
-            request_id = next(iter(s.pending))
-            # Whether it is dangerous is already decided and already written
-            # down; read it back rather than judging it again here.
-            danger = False
-            for ev in self.db.tail_events(chat_id, ("approval.request",), limit=8):
-                if (ev["data"] or {}).get("request_id") == request_id:
-                    danger = bool((ev["data"] or {}).get("danger"))
-                    break
-            if danger and allow:
-                raise PermissionError(
-                    "that one is destructive; it has to be approved in the app")
-            s.respond(request_id, "allow" if allow else "deny")
-
-        async def stop(chat_id: str) -> None:
-            s = self.sessions.peek(chat_id)
-            if s:
-                await s.interrupt()
-
-        return {"send": send, "start": start, "approve": approve, "stop": stop}
-
-    def _concierge_account(self) -> tuple[str | None, dict[str, str]]:
-        """The concierge speaks as the computer, so it uses the computer's own
-        Claude login rather than any one chat's account."""
-        a = self._account(None, "claude")
-        return a.home, a.env()
-
-    async def h_call_hello(self, dev: Device, d: dict) -> dict:
-        """Picking up the phone.
-
-        Answers off one SQLite read so the greeting is immediate, and starts the
-        model session in the background while the caller is being greeted. By
-        the time they have finished saying what they want, the session that
-        would have cost them five seconds is already open."""
-        asyncio.create_task(self.concierge.warm())
-        return call_headline(self.db, self.sessions)
-
-    async def h_call_ask(self, dev: Device, d: dict) -> dict:
-        text = str(d.get("text") or "").strip()
-        if not text:
-            raise Err("empty_message", "empty question")
-        if d.get("reset"):
-            await self.concierge.reset()
-        return await self.concierge.ask(text, d.get("lang"))
-
-    async def h_call_digest(self, dev: Device, d: dict) -> dict:
-        """The snapshot itself, with no model in the way. Answering a status
-        question badly is almost always the snapshot's fault, not the model's,
-        and this is how you find out which."""
-        return {"digest": self.call_snapshot()[0]}
-
 
     # ── accounts ───────────────────────────────────────────────────────────
     async def h_account_list(self, dev: Device, d: dict) -> dict:
