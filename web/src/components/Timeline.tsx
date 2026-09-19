@@ -4,6 +4,7 @@ import { C, R } from '../lib/theme';
 import { Icon, P, Spinner, mono } from '../ui/kit';
 import { cost, duration, tokens, toolSummary, clock } from '../lib/format';
 import type { Item } from '../lib/timeline';
+import { Lightbox, type Shot } from './Lightbox';
 import { fileUrl } from '../lib/actions';
 
 const OK_BG = 'rgba(92,126,79,0.14)';
@@ -40,8 +41,26 @@ function Missing({ name }: { name: string }) {
 
 /** What the phone sent up: photos, a voice note, a document. The daemon has
  *  already shrunk images and transcribed audio, so this only has to show them. */
+/** Save this file, whichever computer it is on. */
+function Download({ href }: { href: string }) {
+  return (
+    <a
+      href={href} download title="Download"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: 26, height: 26, borderRadius: R.btn, flexShrink: 0,
+        background: C.surface2, border: `1px solid ${C.border}`, textDecoration: 'none',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <Icon path={P.download} size={13} color={C.mute} />
+    </a>
+  );
+}
+
 function Attachments({ list, hostKey }: { list: any[]; hostKey: string }) {
   const [broken, setBroken] = useState<Record<string, boolean>>({});
+  const [shot, setShot] = useState<number | null>(null);
   if (!list?.length) return null;
   const media = list.filter((a) => a?.kind === 'image' || a?.kind === 'video');
   const rest = list.filter((a) => a?.kind !== 'image' && a?.kind !== 'video');
@@ -52,6 +71,23 @@ function Attachments({ list, hostKey }: { list: any[]; hostKey: string }) {
   const src = (a: any, viewing = false) => {
     try { return fileUrl(hostKey, (viewing && a.view) || a.path); } catch { return ''; }
   };
+  // Saving hands over the file the message named, not the copy kept for
+  // showing it — the same thing the link used to open.
+  const dl = (a: any) => {
+    try { return fileUrl(hostKey, a.path, true); } catch { return ''; }
+  };
+  const name = (a: any) => a.name ?? a.path?.split(/[/\\]/).pop() ?? 'file';
+
+  // Every picture in this message, so one can be opened and the rest stepped
+  // through without closing anything. Videos sit in the same grid but play in
+  // place, so they are not part of it — hence the index of its own.
+  const shots: Shot[] = [];
+  const shotOf = new Map<number, number>();
+  media.forEach((a, i) => {
+    if (a.kind !== 'image') return;
+    shotOf.set(i, shots.length);
+    shots.push({ src: src(a, true), download: dl(a), name: name(a) });
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: media.length || rest.length ? 8 : 0 }}>
@@ -68,13 +104,20 @@ function Attachments({ list, hostKey }: { list: any[]; hostKey: string }) {
             }}>
               {a.kind === 'image' ? (
                 broken[a.path] ? <Missing name={a.name ?? ''} /> : (
-                  <a href={src(a, true)} target="_blank" rel="noreferrer" style={{ display: 'block', height: '100%' }}>
+                  <button
+                    type="button" title={name(a)}
+                    onClick={() => setShot(shotOf.get(i) ?? 0)}
+                    style={{
+                      display: 'block', width: '100%', height: '100%', padding: 0,
+                      border: 'none', background: 'transparent', cursor: 'zoom-in',
+                    }}
+                  >
                     <img
                       src={src(a, true)} alt=""
                       onError={() => setBroken((b) => ({ ...b, [a.path]: true }))}
                       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     />
-                  </a>
+                  </button>
                 )
               ) : <video src={src(a, true)} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
             </div>
@@ -84,28 +127,36 @@ function Attachments({ list, hostKey }: { list: any[]; hostKey: string }) {
       {rest.map((a, i) => (
         a.kind === 'audio' ? (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 240 }}>
-            <audio src={src(a)} controls style={{ width: '100%', height: 32 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <audio src={src(a)} controls style={{ flex: 1, minWidth: 0, height: 32 }} />
+              <Download href={dl(a)} />
+            </div>
             {a.transcript && (
               <div style={{ fontSize: 13, lineHeight: '19px', color: C.mute }}>“{a.transcript}”</div>
             )}
           </div>
         ) : (
-          <a
-            key={i} href={src(a)} target="_blank" rel="noreferrer"
+          <div
+            key={i}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8, height: 34, padding: '0 10px',
+              display: 'flex', alignItems: 'center', gap: 8, height: 34, padding: '0 4px 0 10px',
               borderRadius: R.btn, background: C.bg, border: `1px solid ${C.border}`,
-              textDecoration: 'none', color: C.text2, maxWidth: 300,
+              color: C.text2, maxWidth: 300,
             }}
           >
             <Icon path={P.copy} size={13} color={C.mute} />
-            <span style={{
-              ...mono, fontSize: 12, flex: 1, minWidth: 0,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>{a.name ?? a.path?.split(/[/\\]/).pop()}</span>
-          </a>
+            <a
+              href={src(a)} target="_blank" rel="noreferrer" title={name(a)}
+              style={{
+                ...mono, fontSize: 12, flex: 1, minWidth: 0, color: 'inherit',
+                textDecoration: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+            >{name(a)}</a>
+            <Download href={dl(a)} />
+          </div>
         )
       ))}
+      {shot != null && <Lightbox shots={shots} start={shot} onClose={() => setShot(null)} />}
     </div>
   );
 }

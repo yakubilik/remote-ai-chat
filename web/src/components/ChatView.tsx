@@ -195,8 +195,12 @@ function Composer({ chat, hostKey, busy, sending, onSend, onInterrupt, onUpload 
   const [pending, setPending] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
+  // dragenter/dragleave also fire crossing between children, so the highlight
+  // follows a depth count rather than the first leave it sees.
+  const depth = useRef(0);
 
   // Attaching is an upload now and a send later, so the pictures can be looked
   // at — and a caption typed — before the agent is handed them.
@@ -210,6 +214,25 @@ function Composer({ chat, hostKey, busy, sending, onSend, onInterrupt, onUpload 
       }
     } catch (e: any) { setError(e?.message ?? 'Upload failed'); }
     finally { setUploading(false); }
+  };
+
+  // A screenshot on the clipboard is a file, not text — nothing lands in the
+  // textarea on its own. Rich copies (a spreadsheet cell, a styled snippet)
+  // carry both a rendering and the text that was actually meant, so only a
+  // paste with no text of its own becomes an upload.
+  const onPaste = (e: React.ClipboardEvent) => {
+    const files = e.clipboardData?.files;
+    if (!files?.length) return;
+    if (e.clipboardData.getData('text/plain').trim()) return;
+    e.preventDefault();
+    addFiles(files);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    depth.current = 0;
+    setDragging(false);
+    if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files);
   };
 
   // Grow with the text, up to a point. Measured from 0 rather than 'auto' so a
@@ -237,7 +260,17 @@ function Composer({ chat, hostKey, busy, sending, onSend, onInterrupt, onUpload 
   const folder = chat.cwd.split(/[/\\]/).pop();
   const ready = !!text.trim() || pending.length > 0;
   return (
-    <div style={{ padding: '8px 20px 16px', flexShrink: 0 }}>
+    <div
+      style={{ padding: '8px 20px 16px', flexShrink: 0 }}
+      onDragEnter={(e) => {
+        if (!e.dataTransfer?.types.includes('Files')) return;
+        depth.current += 1;
+        setDragging(true);
+      }}
+      onDragOver={(e) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); }}
+      onDragLeave={() => { depth.current = Math.max(0, depth.current - 1); if (!depth.current) setDragging(false); }}
+      onDrop={onDrop}
+    >
       {(pending.length > 0 || uploading) && (
         <Tray
           items={pending} hostKey={hostKey} busy={uploading}
@@ -249,7 +282,8 @@ function Composer({ chat, hostKey, busy, sending, onSend, onInterrupt, onUpload 
       )}
       <div style={{
         display: 'flex', alignItems: 'flex-end', gap: 8, padding: 6,
-        borderRadius: R.composer, background: C.surface, border: `1px solid ${C.border}`,
+        borderRadius: R.composer, background: C.surface,
+        border: `1px solid ${dragging ? C.accent : C.border}`,
       }}>
         <input
           ref={file} type="file" multiple name="attachments" style={{ display: 'none' }}
@@ -268,6 +302,7 @@ function Composer({ chat, hostKey, busy, sending, onSend, onInterrupt, onUpload 
         <textarea
           ref={ref} name="composer" value={text} rows={1}
           onChange={(e) => setText(e.target.value)}
+          onPaste={onPaste}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
           }}

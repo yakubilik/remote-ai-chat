@@ -79,10 +79,13 @@ export async function upload(key: string, chatId: string, file: File): Promise<a
 }
 
 /** An uploaded file read back for a bubble. The token is a query parameter
- *  because an <img> tag cannot carry a header. */
-export function fileUrl(key: string, path: string): string {
+ *  because an <img> tag cannot carry a header. `download` asks the daemon for
+ *  a Content-Disposition — the <a download> attribute is ignored when the file
+ *  comes from another computer, and every computer but this one is another. */
+export function fileUrl(key: string, path: string, download = false): string {
   const { cfg } = slot(key);
   const q = new URLSearchParams({ path, token: cfg.token });
+  if (download) q.set('download', '1');
   return `${base(cfg)}/files?${q}`;
 }
 
