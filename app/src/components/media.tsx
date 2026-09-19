@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
@@ -15,7 +15,8 @@ const PauseIcon = ({ size = 14, color = colors.white }: { size?: number; color?:
 );
 
 function srcOf(a: Attachment): string | null {
-  return a.localUri || (a.path ? fileUrl(a.path) : null);
+  const remote = a.view || a.path;
+  return a.localUri || (remote ? fileUrl(remote) : null);
 }
 
 function fmt(sec: number) {
@@ -29,18 +30,38 @@ function bars(seed: string, n = 24): number[] {
   return Array.from({ length: n }, (_, i) => { h = (h * 1103515245 + 12345) >>> 0; return 6 + ((h >>> 8) % 20) + (i % 3); });
 }
 
-/** Photo grid (1-4 images), right aligned. Tap opens a full-screen viewer. */
-export function ImageGroup({ items }: { items: Attachment[] }) {
+/** Photo grid (1-4 images). Right aligned under the person's bubble, left
+ *  under the agent's. Tap opens a full-screen viewer. */
+export function ImageGroup({ items, align = 'right' }: { items: Attachment[]; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState<string | null>(null);
+  // A picture that will not load says so. Left blank it reads as a rendering
+  // bug; named, it reads as a file name where a picture should be.
+  const [gone, setGone] = useState<Record<string, boolean>>({});
   const two = items.length > 1;
   return (
     <>
-      <View style={{ width: two ? 236 : 220, flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' }}>
+      <View style={{ width: two ? 236 : 220, flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
         {items.slice(0, 4).map((a) => {
           const uri = srcOf(a);
+          const size = two ? { width: 116, height: 116 } : { width: 220, height: 220 };
+          if (!uri || gone[a.path]) {
+            return (
+              <View key={a.path} style={[styles.thumb, size, { alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8 }]}>
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={colors.faint} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <Path d="M4 5h16v14H4z" /><Path d="M4 16l4-4 4 4 3-3 5 5" />
+                </Svg>
+                <Text numberOfLines={2} style={[type.caption, { color: colors.faint, letterSpacing: 0, textAlign: 'center' }]}>
+                  {a.name}
+                </Text>
+              </View>
+            );
+          }
           return (
-            <Pressable key={a.path} onPress={() => uri && setOpen(uri)} style={[styles.thumb, two ? { width: 116, height: 116 } : { width: 220, height: 220 }]}>
-              {uri ? <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+            <Pressable key={a.path} onPress={() => setOpen(uri)} style={[styles.thumb, size]}>
+              <Image
+                source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover"
+                onError={() => setGone((g) => ({ ...g, [a.path]: true }))}
+              />
             </Pressable>
           );
         })}
@@ -122,12 +143,26 @@ export function VoiceBubble({ item }: { item: Attachment }) {
   );
 }
 
-export function FileChip({ item }: { item: Attachment }) {
+function fmtSize(n?: number): string {
+  if (!n) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** A file by name. `openable` chips (the agent's) open in the system viewer
+ *  on tap — Safari shows a PDF and offers the share sheet, which is download,
+ *  AirDrop and Files in one place, with no native module of our own. */
+export function FileChip({ item, openable }: { item: Attachment; openable?: boolean }) {
+  const uri = openable ? srcOf(item) : null;
+  const size = fmtSize(item.size);
   return (
-    <View style={styles.fileChip}>
-      <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><Path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><Path d="M14 3v5h5" /></Svg>
+    <Pressable disabled={!uri} onPress={() => uri && Linking.openURL(uri).catch(() => {})}
+      style={[styles.fileChip, openable && { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}>
+      <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={openable ? colors.accent : colors.muted} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><Path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><Path d="M14 3v5h5" /></Svg>
       <Text numberOfLines={1} style={[type.caption, { color: colors.text, letterSpacing: 0, flexShrink: 1 }]}>{item.name}</Text>
-    </View>
+      {!!size && openable && <Text style={[type.caption, { color: colors.muted, letterSpacing: 0 }]}>{size}</Text>}
+    </Pressable>
   );
 }
 

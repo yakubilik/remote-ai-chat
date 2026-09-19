@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActionSheetIOS, Alert, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActionSheetIOS, Alert, FlatList, Image as RNImage, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Rect, Circle } from 'react-native-svg';
@@ -8,7 +8,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { useShallow } from 'zustand/react/shallow';
-import { buildTimeline, useStore, useT, type Attachment, type TimelineItem } from '../../src/store';
+import { buildTimeline, fileUrl, useStore, useT, type Attachment, type TimelineItem } from '../../src/store';
 import type { CliAccount } from '../../src/protocol';
 import { useNavGuard } from '../../src/nav';
 import { getOpenChat, setChatOnScreen, setOpenChat } from '../../src/push';
@@ -94,6 +94,8 @@ export default function ChatScreen() {
   const groups = useStore((s) => s.groups);
   const accounts = useStore((s) => s.accounts);
   const accountsLoaded = useStore((s) => s.accountsLoaded);
+  const hostInfo = useStore((s) => s.hostInfo);
+  const host = useStore((s) => s.host);
   // Selector-less `useStore()` would subscribe this screen to every store write,
   // so a *different* chat streaming in the background re-rendered this one on
   // every token. Take just the actions; their identities never change.
@@ -104,9 +106,17 @@ export default function ChatScreen() {
       createGroup: s.createGroup, settleLive: s.settleLive, loadAccounts: s.loadAccounts,
     })));
   const [text, setText] = useState('');
-  const [turnStart, setTurnStart] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  useEffect(() => { setTurnStart(busy ? (t) => t ?? Date.now() : null); }, [busy]);
+  // Elapsed is measured from the user message that opened the turn, not from
+  // when this screen mounted: reopening a chat mid-turn — or coming back after
+  // iOS froze the timers in the background — used to restart the clock at 0s
+  // and make a long turn look stuck. The daemon stamps events in seconds.
+  const mounted = useRef(Date.now());
+  const turnStart = useMemo(() => {
+    if (!busy) return null;
+    const u = [...(events || [])].reverse().find((e) => e.event === 'message.user');
+    return u ? u.ts * 1000 : mounted.current;
+  }, [busy, events]);
   useEffect(() => {
     if (!busy) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -316,6 +326,10 @@ export default function ChatScreen() {
     return same.length > 1 && account?.plan && account.label !== planLabel ? account.label : undefined;
   }, [accounts, account, chat?.provider, planLabel]);
   const shortCwd = chat ? chat.cwd.replace(/^\/Users\/[^/]+/, '~') : '';
+  // Which computer is running this. The folder alone stopped answering that
+  // the moment a second one was paired, and it is nowhere in the transcript.
+  // The live name when connected; the paired one is all that is left offline.
+  const hostName = hostInfo?.name?.replace('.local', '') || host?.name || T('computer');
 
   const renderItem = useCallback(({ item }: { item: TimelineItem }) => {
     switch (item.kind) {
@@ -335,7 +349,7 @@ export default function ChatScreen() {
             <Text numberOfLines={3} style={[type.caption, { color: colors.muted, flex: 1 }]}>{item.data.thinking.trim().slice(-240)}</Text>
           </View>
         );
-        return <AssistantText text={item.data.text} streaming={item.data.live} />;
+        return <AssistantText text={item.data.text} streaming={item.data.live} attachments={item.data.attachments} />;
       case 'tool': return <ToolCard id={item.data.id} tool={item.data.tool} input={item.data.input} result={item.result} />;
       case 'tools': return <ToolGroup items={item.data} />;
       case 'approval': return (
@@ -355,12 +369,23 @@ export default function ChatScreen() {
       <View style={[styles.head, { paddingTop: insets.top }]}>
         <Pressable onPress={() => go(() => router.back())} style={styles.iconBtn}><Back color={colors.text} /></Pressable>
         <View style={{ flex: 1, alignItems: 'center', gap: 2, minWidth: 0 }}>
-          <LimitsRing accountId={chat?.account_id} provider={chat?.provider} label={planLabel} sub={planSub} dot={dot} />
-          {chat && (
-            <Text numberOfLines={1} style={{ fontFamily: mono, fontSize: 11, color: !online ? colors.warning : chat.perm_mode === 'bypass' ? pc : colors.muted }}>
-              {!online ? (conn === 'connecting' ? T('connecting') : T('offline')) : chat.perm_mode} · {shortCwd}
-            </Text>
-          )}
+          <LimitsRing chatId={id} accountId={chat?.account_id} provider={chat?.provider} label={planLabel} sub={planSub} dot={dot} />
+          {chat && (() => {
+            const c = !online ? colors.warning : chat.perm_mode === 'bypass' ? pc : colors.muted;
+            const meta = { fontFamily: mono, fontSize: 11 };
+            return (
+              // State and computer first, because both are short and neither has
+              // anywhere else to be read. The path gives way when the line runs
+              // out, and gives way at the head: a path is identified by its tail.
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', maxWidth: '100%' }}>
+                <Text numberOfLines={1} style={[meta, { color: c, maxWidth: '60%' }]}>
+                  {!online ? (conn === 'connecting' ? T('connecting') : T('offline')) : chat.perm_mode}
+                  {' · '}<Text style={{ color: colors.faint }}>{hostName}</Text>{' · '}
+                </Text>
+                <Text numberOfLines={1} ellipsizeMode="head" style={[meta, { flexShrink: 1, color: c }]}>{shortCwd}</Text>
+              </View>
+            );
+          })()}
         </View>
         <Pressable onPress={chatMenu} style={styles.iconBtn}>
           <Svg width={22} height={22} viewBox="0 0 24 24" fill={colors.text}><Circle cx="5.5" cy="12" r="1.8" /><Circle cx="12" cy="12" r="1.8" /><Circle cx="18.5" cy="12" r="1.8" /></Svg>
@@ -401,14 +426,28 @@ export default function ChatScreen() {
       {/* Composer */}
       <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: kbVisible ? 8 : Math.max(insets.bottom, 10), gap: 8 }}>
         {pending.length > 0 && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {/* A picture waiting to be sent is shown as the picture. The name of
+                a photo out of the camera roll says nothing about which one it is. */}
             {pending.map((a) => (
-              <Pressable key={a.path} onPress={() => setPending((p) => p.filter((x) => x.path !== a.path))} style={styles.pendingChip}>
-                <Icon size={14} color={colors.muted} d={a.kind === 'video' ? I.video : a.kind === 'audio' ? I.mic : a.kind === 'image' ? I.photos : I.file} />
-                <Text numberOfLines={1} style={[type.caption, { color: colors.text, letterSpacing: 0, maxWidth: 200 }]}>{a.name}</Text>
-                <Icon size={12} color={colors.muted} d={I.x} />
+              <Pressable key={a.path} onPress={() => setPending((p) => p.filter((x) => x.path !== a.path))}
+                style={a.kind === 'image' ? styles.pendingThumb : styles.pendingChip}>
+                {a.kind === 'image' ? (
+                  <>
+                    <RNImage source={{ uri: a.localUri || fileUrl(a.view || a.path) || undefined }}
+                      style={StyleSheet.absoluteFill} resizeMode="cover" />
+                    <View style={styles.pendingX}><Icon size={10} color={colors.text} d={I.x} sw={2.6} /></View>
+                  </>
+                ) : (
+                  <>
+                    <Icon size={14} color={colors.muted} d={a.kind === 'video' ? I.video : a.kind === 'audio' ? I.mic : I.file} />
+                    <Text numberOfLines={1} style={[type.caption, { color: colors.text, letterSpacing: 0, maxWidth: 200 }]}>{a.name}</Text>
+                    <Icon size={12} color={colors.muted} d={I.x} />
+                  </>
+                )}
               </Pressable>
             ))}
+            {uploading && <Spinner />}
           </View>
         )}
         <View style={styles.pill}>
@@ -500,6 +539,8 @@ const styles = StyleSheet.create({
   input: { alignSelf: 'stretch', minHeight: 36, maxHeight: 160, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6, color: colors.text, fontSize: 17, lineHeight: 22 },
   roundBtn: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 },
   pendingChip: { flexDirection: 'row', gap: 6, alignItems: 'center', height: 32, paddingHorizontal: 10, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  pendingThumb: { width: 56, height: 56, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  pendingX: { position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,14,12,0.72)' },
   toast: { position: 'absolute', alignSelf: 'center', bottom: 110, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border2 },
   dim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 10 },

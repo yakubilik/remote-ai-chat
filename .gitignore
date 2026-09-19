@@ -30,3 +30,6 @@ daemon/remote_ai_chat/webui/
 
 # local build identity (Apple team, EAS project) — never committed
 app/IDENTITY.local.md
+
+# scratch: web panel build backups
+daemon/remote_ai_chat/webui.bak-*/

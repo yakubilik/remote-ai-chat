@@ -22,16 +22,35 @@ function Divider({ ts }: { ts: number }) {
   );
 }
 
+/** A picture that will not load. Shown as a picture-shaped thing, never as its
+ *  file name: an `<img>` left to fail falls back to its `alt`, and a file name
+ *  where a screenshot should be is the most confusing thing on the screen. */
+function Missing({ name }: { name: string }) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8, textAlign: 'center',
+    }}>
+      <Icon path={P.image} size={20} color={C.faint} />
+      <span style={{ fontSize: 11, color: C.faint, wordBreak: 'break-all' }}>{name}</span>
+      <span style={{ fontSize: 10, color: C.faint }}>no longer on the computer</span>
+    </div>
+  );
+}
+
 /** What the phone sent up: photos, a voice note, a document. The daemon has
  *  already shrunk images and transcribed audio, so this only has to show them. */
 function Attachments({ list, hostKey }: { list: any[]; hostKey: string }) {
+  const [broken, setBroken] = useState<Record<string, boolean>>({});
   if (!list?.length) return null;
   const media = list.filter((a) => a?.kind === 'image' || a?.kind === 'video');
   const rest = list.filter((a) => a?.kind !== 'image' && a?.kind !== 'video');
   // fileUrl needs the computer's token; if that computer is gone the bubble
-  // still has to render, just without a working link.
-  const src = (a: any) => {
-    try { return fileUrl(hostKey, a.path); } catch { return ''; }
+  // still has to render, just without a working link. A picture is drawn from
+  // the copy the daemon kept (`view`) so that it survives the original being
+  // deleted; the link still opens the file the message named.
+  const src = (a: any, viewing = false) => {
+    try { return fileUrl(hostKey, (viewing && a.view) || a.path); } catch { return ''; }
   };
 
   return (
@@ -47,9 +66,17 @@ function Attachments({ list, hostKey }: { list: any[]; hostKey: string }) {
               borderRadius: R.media, overflow: 'hidden', background: C.bg,
               border: `1px solid ${C.border}`,
             }}>
-              {a.kind === 'image'
-                ? <img src={src(a)} alt={a.name ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <video src={src(a)} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+              {a.kind === 'image' ? (
+                broken[a.path] ? <Missing name={a.name ?? ''} /> : (
+                  <a href={src(a, true)} target="_blank" rel="noreferrer" style={{ display: 'block', height: '100%' }}>
+                    <img
+                      src={src(a, true)} alt=""
+                      onError={() => setBroken((b) => ({ ...b, [a.path]: true }))}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </a>
+                )
+              ) : <video src={src(a, true)} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
             </div>
           ))}
         </div>
@@ -127,8 +154,21 @@ function inline(text: string, keyBase: string) {
   return out;
 }
 
-function Assistant({ item }: { item: Extract<Item, { kind: 'assistant' }> }) {
-  const parts = item.text.split(/```/);
+/** The agent named a file by its path in the text and the daemon lifted it
+ *  into `attachments`; once it is a picture or a link, the path is noise. */
+function stripLocalRefs(text: string, atts: any[]): string {
+  if (!atts?.length) return text;
+  const paths = new Set(atts.map((a) => a.path));
+  return text.replace(/!?\[([^\]\n]*)\]\(\s*(?:<([^>\n]+)>|((?:file:\/\/)?[^)\s]+))\s*\)/g, (m, label, angled, bare) => {
+    const raw = (angled || bare || '').replace(/^file:\/\//, '');
+    if (!paths.has(raw)) return m;
+    return m.startsWith('!') ? '' : label;
+  }).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function Assistant({ item, hostKey }: { item: Extract<Item, { kind: 'assistant' }>; hostKey: string }) {
+  const atts = item.attachments ?? [];
+  const parts = stripLocalRefs(item.text, atts).split(/```/);
   return (
     <div style={{ paddingRight: 32, fontSize: 15, lineHeight: '23px', textWrap: 'pretty' as any }}>
       {parts.map((part, i) => (
@@ -142,6 +182,7 @@ function Assistant({ item }: { item: Extract<Item, { kind: 'assistant' }> }) {
           <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{inline(part, `p${i}`)}</span>
         )
       ))}
+      {atts.length > 0 && <div style={{ marginTop: 8 }}><Attachments list={atts} hostKey={hostKey} /></div>}
       {!item.done && (
         <span style={{
           display: 'inline-block', width: 7, height: 15, marginLeft: 2, background: C.accent,
@@ -369,7 +410,7 @@ export function Timeline({ items, hostKey, onRespond }: {
           <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {gap && <Divider ts={item.ts} />}
             {item.kind === 'user' && <UserBubble item={item} hostKey={hostKey} />}
-            {item.kind === 'assistant' && <Assistant item={item} />}
+            {item.kind === 'assistant' && <Assistant item={item} hostKey={hostKey} />}
             {item.kind === 'thinking' && <Thinking item={item} />}
             {item.kind === 'tool' && <Tool item={item} />}
             {item.kind === 'approval' && (

@@ -6,7 +6,7 @@ import { ChatView } from './components/ChatView';
 import { Inspector } from './components/Inspector';
 import { NewChat } from './components/NewChat';
 import { Palette, type Command } from './components/Palette';
-import { FieldSheet, type Field } from './components/FieldSheet';
+import { FieldSheet, accountName, type Field } from './components/FieldSheet';
 import { ApprovalModal, type Pending } from './components/ApprovalModal';
 import { Dashboard } from './screens/Dashboard';
 import { Projects } from './screens/Projects';
@@ -129,25 +129,42 @@ export function App() {
 
   const blocking = pending.find((p) => p.danger) ?? null;
 
-  const doSend = async (text: string) => {
+  const doSend = async (text: string, attachments: any[] = []) => {
     if (!sel) return;
     setSending(true);
-    try { await send(sel.hostKey, sel.chatId, text); }
+    try { await send(sel.hostKey, sel.chatId, text, attachments); }
     catch (e) { console.error(e); }
     finally { setSending(false); }
   };
 
-  const doAttach = async (files: FileList) => {
-    if (!sel) return;
-    setSending(true);
-    try {
-      const out = [];
-      for (const f of Array.from(files)) out.push(await upload(sel.hostKey, sel.chatId, f));
-      const caption = out.map((a) => a.transcript).filter(Boolean).join('\n');
-      await send(sel.hostKey, sel.chatId, caption, out);
-    } catch (e) { console.error(e); }
-    finally { setSending(false); }
+  // The upload happens as the file is chosen; the send waits for the composer,
+  // so a picture can be looked at (and captioned) before the agent gets it.
+  const doUpload = async (f: File) => {
+    if (!sel) throw new Error('No chat open');
+    return upload(sel.hostKey, sel.chatId, f);
   };
+
+  // Which sign-in this chat spends, and how full it is. `account.list` shells
+  // out to the CLIs, so it is asked for once the chat screen actually needs it.
+  const accountKey = chat ? (chat.account_id || `default-${chat.provider}`) : null;
+  const account = accountKey && slot
+    ? slot.accounts.find((a) => a.id === accountKey) ?? null
+    : null;
+  const accountLabel = account ? accountName(account) : null;
+  const accountUsage = useMemo(() => {
+    const top = (accountKey && slot ? slot.limits[accountKey] ?? [] : [])
+      .filter((w) => typeof w.utilization === 'number')
+      .sort((a, b) => (b.utilization ?? 0) - (a.utilization ?? 0))[0];
+    return top ? (top.utilization ?? 0) : null;
+  }, [accountKey, slot?.limits]);
+
+  useEffect(() => {
+    if (view !== 'chats' || !fleet.focus) return;
+    const s = fleet.hosts[fleet.focus];
+    if (s?.status === 'online' && !s.accounts.length && !s.loading.accounts) {
+      fleet.refreshAccounts(fleet.focus).catch(() => {});
+    }
+  }, [view, fleet.focus, slot?.status, slot?.accounts.length]);
 
   const commands: Command[] = useMemo(() => {
     const list: Command[] = [
@@ -203,6 +220,7 @@ export function App() {
         <Sidebar
           view={view} onView={setView}
           selected={sel?.chatId ?? null} onSelect={open}
+          onNewChat={() => setNewChat({})}
           searchRef={searchRef}
         />
 
@@ -213,8 +231,9 @@ export function App() {
               groupName={chat?.group_id
                 ? (slot?.groups.find((g) => g.id === chat.group_id)?.name ?? null)
                 : null}
+              accountLabel={accountLabel}
               onSend={doSend}
-              onAttach={doAttach}
+              onUpload={doUpload}
               onInterrupt={() => sel && interrupt(sel.hostKey, sel.chatId).catch(() => {})}
               onRespond={(rid, d) => sel && respond(sel.hostKey, sel.chatId, rid, d).catch(() => {})}
               onEdit={setField}
@@ -230,6 +249,7 @@ export function App() {
             <Inspector
               chat={chat} items={log.items} busy={!!chat && (log.busy || chat.status !== 'idle')}
               liveTokens={liveTokens}
+              accountLabel={accountLabel} accountUsage={accountUsage}
               onEdit={setField}
               onInterrupt={() => sel && interrupt(sel.hostKey, sel.chatId).catch(() => {})}
               onPopOut={() => sel && window.open(
@@ -286,7 +306,11 @@ export function App() {
           field={field} chat={chat}
           catalog={fleet.hosts[sel.hostKey]?.catalog ?? null}
           projects={fleet.hosts[sel.hostKey]?.projects ?? []}
-          onPick={(value) => updateChat(sel.hostKey, sel.chatId, { [field]: value }).catch(() => {})}
+          accounts={fleet.hosts[sel.hostKey]?.accounts ?? []}
+          limits={fleet.hosts[sel.hostKey]?.limits ?? {}}
+          busy={log.busy || chat.status !== 'idle'}
+          onPick={(value) => updateChat(sel.hostKey, sel.chatId, { [field]: value })
+            .catch((e) => window.alert(e?.message ?? 'That did not work'))}
           onClose={() => setField(null)}
         />
       )}

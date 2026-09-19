@@ -7,7 +7,7 @@ import { clientFor, onAnyEvent } from './fleet';
  *  table, just `events` ordered by seq. */
 export type Item =
   | { kind: 'user'; id: string; ts: number; text: string; attachments: any[]; queued: boolean }
-  | { kind: 'assistant'; id: string; ts: number; segment: number; text: string; done: boolean }
+  | { kind: 'assistant'; id: string; ts: number; segment: number; text: string; done: boolean; attachments?: any[] }
   | { kind: 'thinking'; id: string; ts: number; text: string }
   | {
       kind: 'tool'; id: string; ts: number; tool: string; input: any;
@@ -72,10 +72,10 @@ export function apply(items: Item[], ev: RacEvent): Item[] {
       const seg = Number(d.segment ?? 0);
       const i = lastOpenSegment(items, seg);
       if (i < 0) {
-        return [...items, { kind: 'assistant', id, ts, segment: seg, text: d.text ?? '', done: true }];
+        return [...items, { kind: 'assistant', id, ts, segment: seg, text: d.text ?? '', done: true, attachments: d.attachments ?? [] }];
       }
       const next = items.slice();
-      next[i] = { ...(next[i] as any), text: d.text ?? '', done: true, id };
+      next[i] = { ...(next[i] as any), text: d.text ?? '', done: true, id, attachments: d.attachments ?? [] };
       return next;
     }
 

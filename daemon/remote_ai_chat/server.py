@@ -24,21 +24,16 @@ from .errors import Err
 from . import agents, tools
 from .push import send_push
 from .transcribe import transcribe, available as transcribe_available
+from .attachments import KINDS, normalize_image
 from .security import PathPolicy
 from .session import NEW_CHAT_TITLE, PROVIDER_FIELDS, PROVIDERS, SessionManager
 from .providers.codex import live_models as codex_live_models
 
 log = logging.getLogger("rac.server")
 
-# Only the media extensions need naming: an image is normalized, a video gets a
-# player, audio is transcribed. Everything else is just "file" — the upload is
-# handed to the agent as a path, so there is no reason to keep an allowlist and
-# reject a .pptx, a .zip or a .docx the agent could read perfectly well.
-KINDS = {
-    ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image", ".webp": "image", ".heic": "image",
-    ".mp4": "video", ".mov": "video", ".m4v": "video",
-    ".m4a": "audio", ".mp3": "audio", ".wav": "audio", ".ogg": "audio", ".caf": "audio", ".aac": "audio",
-}
+# The upload is handed to the agent as a path, so there is no allowlist: a
+# .pptx, a .zip or a .docx the agent could read perfectly well is just "file".
+# The media kinds live in attachments.py, next to the other direction.
 
 PUSH_TEXT = {"approval": "Approval pending", "done": "Task finished"}
 
@@ -368,7 +363,7 @@ class Server:
             raise HTTPException(status_code=413, detail="file too large (100MB)")
         target.write_bytes(data)
         if kind == "image":
-            target = _normalize_image(target)
+            target = normalize_image(target)
         out = {"path": str(target), "name": target.name, "size": target.stat().st_size, "kind": kind,
                "url": f"/files?path={target}"}
         if kind == "audio":
@@ -377,15 +372,25 @@ class Server:
                 out["transcript"] = t["text"]
         return out
 
-    async def files(self, path: str = Query(...), authorization: str = Header(default=""), token: str = Query(default="")) -> FileResponse:
-        """Serve an uploaded file back to the phone (images/videos/audio in bubbles)."""
+    async def files(self, path: str = Query(...), authorization: str = Header(default=""), token: str = Query(default=""),
+                    download: int = Query(default=0)) -> FileResponse:
+        """Serve a file to the phone.
+
+        Two kinds of file come through here: something the phone uploaded
+        (images, voice notes — they live under the uploads folder), and
+        something the agent wants the person to see — a screenshot it took, a
+        PDF it built. The second kind lives wherever the agent put it, so the
+        rule is the path policy's: inside an allowed root and not a secret.
+        `download=1` asks the browser to save rather than display.
+        """
         tok = authorization[7:].strip() if authorization.lower().startswith("bearer ") else token
         if not tok or self.cfg.find_device_by_token(tok) is None:
             raise HTTPException(status_code=401, detail="unauthorized")
-        p = Path(path).resolve()
-        if UPLOAD_DIR.resolve() not in p.parents or not p.is_file():
+        p = Path(path).expanduser().resolve()
+        uploaded = UPLOAD_DIR.resolve() in p.parents and p.is_file()
+        if not uploaded and not self.policy.is_servable(p):
             raise HTTPException(status_code=404, detail="not found")
-        return FileResponse(str(p))
+        return FileResponse(str(p), filename=p.name if download else None)
 
     # ── auth ───────────────────────────────────────────────────────────────
     def _rate_limited(self, ip: str) -> bool:
@@ -885,58 +890,6 @@ class Server:
                 await self.sessions.reap_idle()
             except Exception as exc:
                 log.warning("reaper: %s", exc)
-
-
-def _normalize_image(path: Path) -> Path:
-    """HEIC or oversized photos → JPEG ≤ 1600 px so Claude Code's Read (256 KB cap for
-    text, image previews OK up to a few MB) can actually look at them.
-
-    macOS has `sips` built in; elsewhere Pillow does the same job. Without either
-    the file is passed through untouched and the model may not be able to read it."""
-    try:
-        heic = path.suffix.lower() in (".heic", ".heif")
-        big = path.stat().st_size > 600 * 1024
-        if not (heic or big):
-            return path
-        out = path.with_suffix(".jpg") if heic else path.with_name(path.stem + "-web.jpg")
-        if shutil.which("sips"):
-            r = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "82", "-Z", "1600",
-                                str(path), "--out", str(out)], capture_output=True, text=True, timeout=60)
-            if r.returncode == 0 and out.exists():
-                if out != path:
-                    path.unlink(missing_ok=True)
-                return out
-            log.warning("sips failed: %s", r.stderr.strip()[:200])
-        if _pillow_resize(path, out):
-            if out != path:
-                path.unlink(missing_ok=True)
-            return out
-        log.warning("no image converter available (install Pillow) — sending %s as is", path.name)
-    except Exception as exc:
-        log.warning("image normalize failed: %s", exc)
-    return path
-
-
-def _pillow_resize(src: Path, dst: Path) -> bool:
-    """Pillow path, used on Windows and Linux. HEIC needs pillow-heif."""
-    try:
-        from PIL import Image
-    except ImportError:
-        return False
-    try:
-        try:
-            import pillow_heif                      # noqa: F401
-            pillow_heif.register_heif_opener()
-        except Exception:
-            pass
-        with Image.open(src) as im:
-            im = im.convert("RGB")
-            im.thumbnail((1600, 1600))
-            im.save(dst, "JPEG", quality=82, optimize=True)
-        return dst.exists()
-    except Exception as exc:
-        log.warning("pillow convert failed: %s", exc)
-        return False
 
 
 def _os_version() -> str:

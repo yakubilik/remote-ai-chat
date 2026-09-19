@@ -4,12 +4,14 @@ import { Chip, Dot, Icon, P, Pulse, Spinner, mono, Empty } from '../ui/kit';
 import { Timeline } from './Timeline';
 import { ChatMenu } from './ChatMenu';
 import { duration, shortPath, toolSummary } from '../lib/format';
+import { fileUrl } from '../lib/actions';
+import type { Field } from './FieldSheet';
 import type { Chat, Group } from '../lib/protocol';
 import type { ChatLog } from '../lib/timeline';
 
-function Header({ chat, groupName, count, onEdit, onMenu }: {
-  chat: Chat; groupName: string | null; count: number;
-  onEdit: (f: 'model' | 'effort' | 'perm_mode' | 'cwd') => void;
+function Header({ chat, groupName, count, accountLabel, onEdit, onMenu }: {
+  chat: Chat; groupName: string | null; count: number; accountLabel: string | null;
+  onEdit: (f: Field) => void;
   onMenu: () => void;
 }) {
   const sub = [groupName, chat.cwd.split(/[/\\]/).pop(), `${count} messages`].filter(Boolean).join(' · ');
@@ -41,6 +43,14 @@ function Header({ chat, groupName, count, onEdit, onMenu }: {
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        {/* Which sign-in is being spent, and the way to another one: this is
+            where a person looks when a plan's limit has run out mid-chat. */}
+        <Chip onClick={() => onEdit('account_id')} title="Account running this chat" shrink>
+          <Icon path={P.agent} size={12} color={C.mute} />
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {accountLabel ?? 'account'}
+          </span>
+        </Chip>
         <Chip onClick={() => onEdit('model')}>
           <Dot color={C.accent} live /> {chat.model}
         </Chip>
@@ -124,15 +134,83 @@ function WorkingStrip({ log, onInterrupt }: { log: ChatLog; onInterrupt: () => v
   );
 }
 
-function Composer({ chat, busy, sending, onSend, onInterrupt, onAttach }: {
-  chat: Chat; busy: boolean; sending: boolean;
-  onSend: (text: string) => void;
+/** What is attached but not sent yet. A picture is shown as the picture, at the
+ *  size a thumbnail wants to be — a file name is not a preview, and the whole
+ *  point of attaching a screenshot is to see that it is the right one. */
+function Tray({ items, hostKey, busy, onRemove }: {
+  items: any[]; hostKey: string; busy: boolean; onRemove: (path: string) => void;
+}) {
+  const src = (a: any) => {
+    try { return fileUrl(hostKey, a.view || a.path); } catch { return ''; }
+  };
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+      {items.map((a) => (
+        <div key={a.path} style={{ position: 'relative' }}>
+          {a.kind === 'image' ? (
+            <img
+              src={src(a)} alt=""
+              style={{
+                width: 56, height: 56, objectFit: 'cover', display: 'block',
+                borderRadius: R.btn, border: `1px solid ${C.border}`, background: C.bg,
+              }}
+            />
+          ) : (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px',
+              borderRadius: R.btn, background: C.surface2, border: `1px solid ${C.border}`,
+              maxWidth: 200,
+            }}>
+              <Icon path={a.kind === 'audio' ? P.mic : P.copy} size={13} color={C.mute} />
+              <span style={{
+                ...mono, fontSize: 12, color: C.text2, minWidth: 0,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{a.name}</span>
+            </div>
+          )}
+          <button
+            type="button" onClick={() => onRemove(a.path)} title="Remove"
+            style={{
+              position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: 9,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              background: C.surface, border: `1px solid ${C.border}`, padding: 0,
+            }}
+          >
+            <Icon path={P.x} size={10} color={C.text2} />
+          </button>
+        </div>
+      ))}
+      {busy && <Spinner size={14} />}
+    </div>
+  );
+}
+
+function Composer({ chat, hostKey, busy, sending, onSend, onInterrupt, onUpload }: {
+  chat: Chat; hostKey: string; busy: boolean; sending: boolean;
+  onSend: (text: string, attachments: any[]) => void;
   onInterrupt: () => void;
-  onAttach: (files: FileList) => void;
+  onUpload: (file: File) => Promise<any>;
 }) {
   const [text, setText] = useState('');
+  const [pending, setPending] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
+
+  // Attaching is an upload now and a send later, so the pictures can be looked
+  // at — and a caption typed — before the agent is handed them.
+  const addFiles = async (files: FileList) => {
+    setUploading(true);
+    setError(null);
+    try {
+      for (const f of Array.from(files)) {
+        const a = await onUpload(f);
+        setPending((p) => [...p, a]);
+      }
+    } catch (e: any) { setError(e?.message ?? 'Upload failed'); }
+    finally { setUploading(false); }
+  };
 
   // Grow with the text, up to a point. Measured from 0 rather than 'auto' so a
   // second pass cannot read back the height the first pass just set.
@@ -145,21 +223,37 @@ function Composer({ chat, busy, sending, onSend, onInterrupt, onAttach }: {
 
   const submit = () => {
     const t = text.trim();
-    if (!t) return;
-    onSend(t);
+    if (!t && !pending.length) return;
+    // A voice note carries its own words; anything else gets a line that says
+    // why it is there, because a message with no text at all reads as a glitch.
+    const caption = t
+      || pending.map((a) => a.transcript).filter(Boolean).join('\n')
+      || 'Have a look at this.';
+    onSend(caption, pending);
     setText('');
+    setPending([]);
   };
 
   const folder = chat.cwd.split(/[/\\]/).pop();
+  const ready = !!text.trim() || pending.length > 0;
   return (
     <div style={{ padding: '8px 20px 16px', flexShrink: 0 }}>
+      {(pending.length > 0 || uploading) && (
+        <Tray
+          items={pending} hostKey={hostKey} busy={uploading}
+          onRemove={(p) => setPending((list) => list.filter((a) => a.path !== p))}
+        />
+      )}
+      {error && (
+        <div style={{ fontSize: 12, color: C.danger, marginBottom: 6 }}>{error}</div>
+      )}
       <div style={{
         display: 'flex', alignItems: 'flex-end', gap: 8, padding: 6,
         borderRadius: R.composer, background: C.surface, border: `1px solid ${C.border}`,
       }}>
         <input
           ref={file} type="file" multiple name="attachments" style={{ display: 'none' }}
-          onChange={(e) => { if (e.target.files?.length) onAttach(e.target.files); e.target.value = ''; }}
+          onChange={(e) => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ''; }}
         />
         <button
           type="button" onClick={() => file.current?.click()} title="Attach a file"
@@ -186,19 +280,19 @@ function Composer({ chat, busy, sending, onSend, onInterrupt, onAttach }: {
           }}
         />
         <button
-          type="button" onClick={busy ? onInterrupt : submit}
-          disabled={!busy && !text.trim()}
-          title={busy ? 'Stop' : 'Send'}
+          type="button" onClick={busy && !ready ? onInterrupt : submit}
+          disabled={!busy && !ready}
+          title={busy && !ready ? 'Stop' : 'Send'}
           style={{
             width: 36, height: 36, borderRadius: 18, flexShrink: 0,
-            cursor: busy || text.trim() ? 'pointer' : 'default',
-            background: busy ? C.danger : text.trim() ? C.accent : C.surface2,
+            cursor: busy || ready ? 'pointer' : 'default',
+            background: busy && !ready ? C.danger : ready ? C.accent : C.surface2,
             border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            opacity: !busy && !text.trim() ? 0.5 : 1,
+            opacity: !busy && !ready ? 0.5 : 1,
           }}
         >
           {sending ? <Spinner size={14} color="#FFFFFF" />
-            : busy ? <Icon path={P.stop} size={14} color="#FFFFFF" fill />
+            : busy && !ready ? <Icon path={P.stop} size={14} color="#FFFFFF" fill />
             : <Icon path={P.send} size={16} color="#FFFFFF" width={2.4} />}
         </button>
       </div>
@@ -211,20 +305,21 @@ function Composer({ chat, busy, sending, onSend, onInterrupt, onAttach }: {
   );
 }
 
-export function ChatView({ chat, hostKey, log, groupName, groups, onSend, onInterrupt, onRespond, onEdit, onUpdate, onDelete, onAttach, sending }: {
+export function ChatView({ chat, hostKey, log, groupName, groups, accountLabel, onSend, onInterrupt, onRespond, onEdit, onUpdate, onDelete, onUpload, sending }: {
   chat: Chat | null;
   hostKey: string | null;
   log: ChatLog;
   groupName: string | null;
   groups: Group[];
+  accountLabel: string | null;
   sending: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments: any[]) => void;
   onInterrupt: () => void;
   onRespond: (requestId: string, d: 'allow' | 'allow_session' | 'deny') => void;
-  onEdit: (f: 'model' | 'effort' | 'perm_mode' | 'cwd') => void;
+  onEdit: (f: Field) => void;
   onUpdate: (patch: Record<string, any>) => void;
   onDelete: () => void;
-  onAttach: (files: FileList) => void;
+  onUpload: (file: File) => Promise<any>;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -252,7 +347,10 @@ export function ChatView({ chat, hostKey, log, groupName, groups, onSend, onInte
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: C.bg }}>
       <div style={{ position: 'relative', flexShrink: 0 }}>
-        <Header chat={chat} groupName={groupName} count={msgCount} onEdit={onEdit} onMenu={() => setMenu(true)} />
+        <Header
+          chat={chat} groupName={groupName} count={msgCount} accountLabel={accountLabel}
+          onEdit={onEdit} onMenu={() => setMenu(true)}
+        />
         {menu && (
           <ChatMenu
             chat={chat} groups={groups}
@@ -279,8 +377,8 @@ export function ChatView({ chat, hostKey, log, groupName, groups, onSend, onInte
       </div>
       {busy && <WorkingStrip log={log} onInterrupt={onInterrupt} />}
       <Composer
-        chat={chat} busy={busy} sending={sending}
-        onSend={onSend} onInterrupt={onInterrupt} onAttach={onAttach}
+        chat={chat} hostKey={hostKey ?? ''} busy={busy} sending={sending}
+        onSend={onSend} onInterrupt={onInterrupt} onUpload={onUpload}
       />
     </div>
   );

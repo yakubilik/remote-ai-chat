@@ -55,7 +55,7 @@ were missed.
 | `turn.started` | – | – |
 | `text.delta` | – | `{segment, text}` — the same `segment` appends to the same bubble |
 | `thinking.delta` | – | `{text}` |
-| `message.assistant` | ✓ | `{segment, text}` — the segment's final form; replace the live text with this |
+| `message.assistant` | ✓ | `{segment, text, attachments?}` — the segment's final form; replace the live text with this. `attachments` lists the files the text names by local path (see below) |
 | `tool.use` | ✓ | `{id, tool, input}` |
 | `tool.result` | ✓ | `{id, output, is_error}` |
 | `approval.request` | ✓ | `{request_id, tool, input, preview, danger, reason}` |
@@ -77,6 +77,29 @@ segment becomes permanent. A `tool.use` closes the segment before it.
 Returns `{path, name, size}`; `path` is then passed in `chat.send.attachments[]`.
 Allowed extensions: png jpg jpeg gif webp heic pdf txt md json csv log · 25 MB.
 Files stay under `~/.remote-ai-chat/uploads/<chat_id>/`.
+
+## HTTP: files, both directions
+
+`GET /files?path=<abs>&token=<token>[&download=1]` serves a file to a client.
+Two kinds qualify: anything under the uploads folder (the phone sent it), and
+anything the path policy allows — inside an allowed root, outside every denied
+path, not a secret (`.env*`, keys, `.git/`, `.ssh/`, …). `download=1` sets a
+`Content-Disposition: attachment` so a browser saves instead of showing.
+
+The agent has no upload button. To show a file it writes the path into its
+message as Markdown — `![caption](/abs/path.png)` or `[name](/abs/path.pdf)` —
+and the daemon lifts every such path that the policy would serve into
+`message.assistant.attachments[]`, each `{path, name, size, kind, url}` with the
+same shape as an upload. The text is left as written. A client shows images
+inline and the rest as an openable chip; a client that does not know about
+attachments still shows a readable path. At most 12 per message.
+
+A picture also carries `view`: a copy of it kept under the uploads folder, which
+`/files` serves whatever happens to the original. Draw a bubble from `view` when
+it is there and fall back to `path`; `path` is still what the message says, what
+a download opens, and what the text is matched against. Without this a chat
+scrolled back to shows a file name where a screenshot was, because the agent
+cleaned up after itself.
 
 ## Codex mapping
 

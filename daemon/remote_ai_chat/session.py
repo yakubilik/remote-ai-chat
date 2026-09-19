@@ -11,7 +11,8 @@ from typing import Awaitable, Callable
 from .config import Config
 from .db import DB, new_id
 from .errors import Err
-from . import preamble
+from . import attachments, preamble
+from .security import PathPolicy
 from .providers.base import Provider, ProviderConfig
 from .providers.claude import ClaudeProvider
 from .providers.codex import CodexProvider
@@ -58,6 +59,7 @@ class ChatSession:
         self.cfg = cfg
         self.broadcast = broadcast
         self.notify = notify
+        self.policy = PathPolicy(cfg.allowed_roots, cfg.denied_paths)
         self.provider: Provider | None = None
         self.running: asyncio.Task | None = None
         # Messages typed while a turn was still going. The running turn drains
@@ -78,6 +80,13 @@ class ChatSession:
 
     # ── events ─────────────────────────────────────────────────────────────
     async def emit(self, type_: str, payload: dict, persist: bool) -> None:
+        # A finished assistant message may name files it wants seen; they ride
+        # along as `attachments` (see attachments.py). Done here, not in the
+        # providers, so every provider's messages carry them the same way.
+        if type_ == "message.assistant" and payload.get("text"):
+            found = attachments.extract(payload["text"], self.policy)
+            if found:
+                payload = {**payload, "attachments": attachments.keep_views(found)}
         if persist:
             ev = self.db.append_event(self.chat_id, type_, payload)
         else:

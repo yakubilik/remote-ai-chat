@@ -143,9 +143,44 @@ function renderMarkdown(src: string) {
   return renderer.renderNode({ type: 'body', key: 'md', children: ast }, [], true);
 }
 
-export const AssistantText = React.memo(function AssistantText({ text, streaming }: { text: string; streaming?: boolean }) {
+/** The agent names a file by writing its path into the message as a Markdown
+ *  image or link; the daemon lifts it into `attachments` (see attachments.py).
+ *  Once it is shown as a picture or a chip, the path in the text is noise —
+ *  an image reference goes entirely, a link keeps its label. */
+function stripLocalRefs(text: string, atts: Attachment[]): string {
+  if (!atts.length) return text;
+  const paths = new Set(atts.map((a) => a.path));
+  let out = text.replace(/!?\[([^\]\n]*)\]\(\s*(?:<([^>\n]+)>|((?:file:\/\/)?[^)\s]+))\s*\)/g, (m, label, angled, bare) => {
+    const raw = (angled || bare || '').replace(/^file:\/\//, '');
+    if (!paths.has(raw)) return m;
+    return m.startsWith('!') ? '' : label;
+  });
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function AssistantAttachments({ items }: { items: Attachment[] }) {
+  const images = items.filter((a) => a.kind === 'image');
+  const videos = items.filter((a) => a.kind === 'video');
+  const voices = items.filter((a) => a.kind === 'audio');
+  const files = items.filter((a) => !images.includes(a) && !videos.includes(a) && !voices.includes(a));
   return (
-    <View style={styles.assistant}>{renderMarkdown(text + (streaming ? ' ▍' : ''))}</View>
+    <View style={{ alignItems: 'flex-start', gap: 6, marginBottom: 10 }}>
+      {images.length > 0 && <ImageGroup items={images} align="left" />}
+      {videos.map((v) => <VideoBubble key={v.path} item={v} />)}
+      {voices.map((v) => <VoiceBubble key={v.path} item={v} />)}
+      {files.map((f) => <FileChip key={f.path} item={f} openable />)}
+    </View>
+  );
+}
+
+export const AssistantText = React.memo(function AssistantText({ text, streaming, attachments }: { text: string; streaming?: boolean; attachments?: Attachment[] }) {
+  const atts = attachments ?? [];
+  const body = stripLocalRefs(text, atts);
+  return (
+    <View style={styles.assistant}>
+      {!!body && renderMarkdown(body + (streaming ? ' ▍' : ''))}
+      {atts.length > 0 && <AssistantAttachments items={atts} />}
+    </View>
   );
 });
 

@@ -36,6 +36,12 @@ Two things this is **not**, both of which sessions have confused it with:
   token and language.
 * Push goes through Expo (`exp.host`) and is **content-free by design** — no
   message text leaves the computer.
+* Files go both ways. The phone uploads to `uploads/`. A session shows a file
+  by naming its absolute path in Markdown — `![caption](/abs/x.png)` or
+  `[name](/abs/x.pdf)` — and the daemon lifts it into the message's
+  `attachments`; the app renders images inline and other files as an openable
+  chip. Served over `GET /files`, only from inside the allowed roots and never
+  a secret (`.env*`, keys, `.git/`). Details in `docs/PROTOCOL.md`.
 * Voice notes are transcribed locally: `mlx-whisper` on Apple silicon,
   `faster-whisper` on Windows and Linux. The first one is slow (model download).
   Transcription artifacts in a message are transcription artifacts, not intent.

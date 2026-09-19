@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useStore, useT } from '../store';
 import { LOCALE, type Key } from '../i18n';
 import { colors, radius, type } from '../theme';
-import type { LimitWindow } from '../protocol';
+import { Check } from './ui';
+import type { CliAccount, LimitWindow } from '../protocol';
 
 const NAME: Record<string, Key> = {
   five_hour: 'limFiveHour', seven_day: 'limWeekAll', seven_day_opus: 'limWeekOpus',
@@ -49,13 +50,39 @@ function ageLabel(at: number | undefined, T: ReturnType<typeof useT>): string {
  *  The whole chip is the tap target then — a 30px ring beside a word is not
  *  one, and the word is the part the eye goes to. A provider that reports
  *  nothing keeps the chip and loses only the ring. */
-export function LimitsRing({ accountId, provider, label, sub, dot }: {
-  accountId?: string | null; provider?: string; label?: string; sub?: string; dot?: string;
+export function LimitsRing({ chatId, accountId, provider, label, sub, dot }: {
+  chatId?: string; accountId?: string | null; provider?: string; label?: string; sub?: string; dot?: string;
 }) {
   const T = useT();
   const all = useStore((s) => s.limits);
+  const accounts = useStore((s) => s.accounts);
+  const busy = useStore((s) => (chatId ? !!s.busy[chatId] : false));
+  const updateChat = useStore((s) => s.updateChat);
   const [open, setOpen] = useState(false);
   const key = accountId || `default-${provider ?? 'claude'}`;
+  // The chip already names the account being spent, so this is where a reader
+  // looks to change it. Only sign-ins that can actually run a turn are offered.
+  const others = useMemo(
+    () => (chatId ? accounts.filter((a) => a.provider === provider && (a.logged_in || a.is_default)) : []),
+    [accounts, provider, chatId]);
+
+  /** Moving a chat to another account starts a new thread there: a resume id
+   *  belongs to one account's transcript store, and the daemon drops it on the
+   *  way over. That is a whole conversation's memory, so it is asked first. */
+  function switchTo(a: CliAccount) {
+    const next = a.is_default ? null : a.id;
+    const name = a.is_default ? T('useDefaultAccount') : a.label;
+    if ((accountId ?? null) === next) { setOpen(false); return; }
+    if (busy) { Alert.alert(T('acctSwitch'), T('acctSwitchBusy')); return; }
+    Alert.alert(T('acctSwitch'), T('acctSwitchBody', { name }), [
+      { text: T('cancel'), style: 'cancel' },
+      { text: T('acctSwitchGo'), onPress: () => {
+          setOpen(false);
+          updateChat(chatId!, { account_id: next } as any)
+            .catch((e: any) => Alert.alert(T('error'), e.message));
+        } },
+    ]);
+  }
   const windows = useMemo(
     () => (all[key] ?? []).filter((w) => typeof w.utilization === 'number')
       .sort((a, b) => (b.utilization ?? 0) - (a.utilization ?? 0)),
@@ -120,6 +147,27 @@ export function LimitsRing({ accountId, provider, label, sub, dot }: {
                 </View>
               );
             })}
+            {others.length > 1 && (
+              <View style={[styles.acctBlock, windows.length > 0 && styles.rowBorderTop]}>
+                <Text style={[type.caption, { color: colors.faint, letterSpacing: 0.6 }]}>{T('acctSwitch').toUpperCase()}</Text>
+                {others.map((a) => {
+                  const on = (accountId ?? null) === (a.is_default ? null : a.id);
+                  return (
+                    <Pressable key={a.id} onPress={() => switchTo(a)} style={styles.acctRow} hitSlop={4}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} style={[type.sub, { color: colors.text, fontWeight: on ? '600' : '400' }]}>
+                          {a.is_default ? T('useDefaultAccount') : a.label}
+                        </Text>
+                        <Text numberOfLines={1} style={[type.caption, { color: colors.faint, letterSpacing: 0 }]}>
+                          {a.logged_in ? a.detail : T('notSignedIn')}
+                        </Text>
+                      </View>
+                      {on && <Check size={18} />}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -140,6 +188,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden', marginBottom: 30 },
   row: { paddingHorizontal: 14, paddingVertical: 12, gap: 7 },
   rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border2 },
+  rowBorderTop: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border2 },
+  acctBlock: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 2 },
+  acctRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
   rowTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
   bar: { height: 5, borderRadius: 3, backgroundColor: colors.border2, overflow: 'hidden' },
   fill: { height: 5, borderRadius: 3 },

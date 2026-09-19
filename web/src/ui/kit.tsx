@@ -201,4 +201,6 @@ export const P = {
   grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   agent: 'M12 4a4 4 0 0 1 4 4v1h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h1V8a4 4 0 0 1 4-4zM9 14v.1M15 14v.1',
   clock: 'M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM12 8v4l3 2',
+  image: 'M4 5h16v14H4zM4 16l4-4 4 4 3-3 5 5M15 9v.1',
+  mic: 'M9 4h6v8H9zM5 11a7 7 0 0 0 14 0M12 18v3',
 } as const;

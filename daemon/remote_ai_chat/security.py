@@ -57,10 +57,41 @@ def redact(text: str) -> str:
     return text
 
 
+# Files the phone must never be handed even when they sit inside an allowed
+# root: keys, credentials, the agent's own environment. The roots are for
+# *code*; these are the things that live next to code and are not it.
+UNSERVABLE_NAMES = re.compile(
+    r"^(\.env(\..*)?|\.npmrc|\.netrc|\.pypirc|id_(rsa|dsa|ecdsa|ed25519)(\.pub)?|.*\.(pem|key|p12|pfx|keychain(-db)?|jks))$",
+    re.IGNORECASE,
+)
+UNSERVABLE_DIRS = {".git", ".ssh", ".aws", ".gnupg", ".config", ".remote-ai-chat", ".claude", ".codex"}
+
+
 class PathPolicy:
     def __init__(self, allowed_roots: list[str], denied: list[str]):
         self.roots = [Path(p).expanduser().resolve() for p in allowed_roots]
         self.denied = [Path(p).expanduser().resolve() for p in denied]
+
+    def is_servable(self, path: str | Path) -> bool:
+        """May this file be handed to the phone over `/files`?
+
+        Inside an allowed root, outside every denied path, a regular file, and
+        not one of the names or folders that hold secrets. Symlinks are
+        resolved first, so a link out of the root does not get out.
+        """
+        try:
+            p = Path(path).expanduser().resolve(strict=True)
+        except Exception:
+            return False
+        if not p.is_file():
+            return False
+        if any(p == d or d in p.parents for d in self.denied):
+            return False
+        if not any(r in p.parents for r in self.roots):
+            return False
+        if UNSERVABLE_NAMES.match(p.name):
+            return False
+        return not any(part in UNSERVABLE_DIRS for part in p.parts)
 
     def is_allowed_cwd(self, cwd: str) -> bool:
         try:

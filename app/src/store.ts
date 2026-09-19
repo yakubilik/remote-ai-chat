@@ -22,7 +22,10 @@ export interface Prefs {
   faceIdLaunch: boolean; faceIdBypass: boolean; chatView: ChatView;
 }
 export interface DeviceInfo { id: string; name: string; push_approval: boolean; push_done: boolean; has_push_token: boolean }
-export interface Attachment { path: string; name: string; size?: number; kind?: 'image' | 'video' | 'audio' | 'file'; url?: string; transcript?: string; duration?: number; localUri?: string }
+/** `path` is the file the message names — what a link opens, and what the text
+ *  is matched against. `view` is the copy the computer kept for the bubble to
+ *  draw, which outlives the original being deleted (see attachments.py). */
+export interface Attachment { path: string; view?: string; name: string; size?: number; kind?: 'image' | 'video' | 'audio' | 'file'; url?: string; transcript?: string; duration?: number; localUri?: string }
 
 interface State {
   ready: boolean;

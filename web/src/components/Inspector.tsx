@@ -1,6 +1,7 @@
 import { C, R } from '../lib/theme';
 import { Icon, P, mono, Label, Dot } from '../ui/kit';
 import { cost, duration, shortPath, tokens } from '../lib/format';
+import type { Field } from './FieldSheet';
 import type { Chat } from '../lib/protocol';
 import type { Item } from '../lib/timeline';
 
@@ -59,12 +60,15 @@ function recentTools(items: Item[]) {
   return out;
 }
 
-export function Inspector({ chat, items, busy, liveTokens, onEdit, onInterrupt, onPopOut }: {
+export function Inspector({ chat, items, busy, liveTokens, accountLabel, accountUsage, onEdit, onInterrupt, onPopOut }: {
   chat: Chat | null;
   items: Item[];
   busy: boolean;
   liveTokens: number | null;
-  onEdit: (field: 'model' | 'effort' | 'perm_mode' | 'cwd') => void;
+  accountLabel: string | null;
+  /** 0–1 of the fullest window that account last reported, if it reports any. */
+  accountUsage: number | null;
+  onEdit: (field: Field) => void;
   onInterrupt: () => void;
   onPopOut: () => void;
 }) {
@@ -89,6 +93,15 @@ export function Inspector({ chat, items, busy, liveTokens, onEdit, onInterrupt, 
           <>
             <Label>This session</Label>
             <Card>
+              <Row
+                label="Account"
+                value={accountUsage != null
+                  ? `${accountLabel ?? '—'} · ${Math.round(accountUsage * 100)}%`
+                  : (accountLabel ?? '—')}
+                dot={accountUsage != null && accountUsage >= 0.9 ? C.danger
+                  : accountUsage != null && accountUsage >= 0.6 ? C.warn : undefined}
+                onClick={() => onEdit('account_id')}
+              />
               <Row label="Model" value={chat.model} onClick={() => onEdit('model')} />
               <Row label="Effort" value={chat.effort ?? '—'} onClick={() => onEdit('effort')} />
               <Row

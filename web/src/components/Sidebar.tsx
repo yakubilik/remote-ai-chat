@@ -205,11 +205,12 @@ function ChatRow({ chat, selected, onPick }: { chat: Chat; selected: boolean; on
   );
 }
 
-export function Sidebar({ view, onView, selected, onSelect, searchRef }: {
+export function Sidebar({ view, onView, selected, onSelect, onNewChat, searchRef }: {
   view: View;
   onView: (v: View) => void;
   selected: string | null;
   onSelect: (hostKey: string, chatId: string) => void;
+  onNewChat: () => void;
   searchRef?: React.RefObject<HTMLInputElement>;
 }) {
   const { hosts, order, focus, setFocus } = useFleet();
@@ -257,6 +258,23 @@ export function Sidebar({ view, onView, selected, onSelect, searchRef }: {
 
       {view === 'chats' ? (
         <>
+          {/* Starting a chat belongs above the list of chats, not on the panel
+              screen: this is where someone is standing when they want one. */}
+          <div style={{ padding: '0 8px 8px' }}>
+            <button
+              type="button" onClick={onNewChat}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                width: '100%', height: 34, borderRadius: R.btn, cursor: 'pointer',
+                background: C.accent, border: `1px solid ${C.accent}`,
+                color: '#FFFFFF', fontSize: 13, fontWeight: 600,
+              }}
+            >
+              <Icon path={P.plus} size={15} color="#FFFFFF" width={2.6} />
+              New chat
+              <span style={{ ...mono, fontSize: 11, opacity: 0.75 }}>⌘N</span>
+            </button>
+          </div>
           <div style={{ padding: '0 8px 8px' }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, height: 32, padding: '0 10px',
