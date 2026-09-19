@@ -70,7 +70,8 @@ interface State {
   // field again while the CLI is finishing
   loginSubmitting: boolean;
   installLog: string;
-  defaults: Defaults;
+  defaults: Defaults;                     // derived: the active host's entry
+  defaultsByHost: DefaultsByHost;
   prefs: Prefs;
   locked: boolean;
   pushToken: string | null;
@@ -130,6 +131,28 @@ interface State {
 }
 
 const DEFAULTS: Defaults = { provider: 'claude', model: 'opus', effort: 'high', perm_mode: 'ask', cwd: null };
+
+/** Defaults are about one computer — its folders, its accounts, the CLIs it has
+ *  installed — so they are kept per host. Shared, the other computer's last
+ *  folder follows you to this one and the first new chat opens on a path that
+ *  is not there. */
+export type DefaultsByHost = Record<string, Defaults>;
+
+function defaultsFor(byHost: DefaultsByHost, hostId: string | null): Defaults {
+  return { ...DEFAULTS, ...(hostId ? byHost[hostId] : undefined) };
+}
+
+/** A folder this computer still has: one of the paths it named, or something
+ *  inside one. A remembered path that fails this was renamed, deleted, or
+ *  belongs to another computer — either way it is not worth offering again.
+ *  The roots count as well as the projects: a chat may sit on a root itself,
+ *  and the project list only names what is directly under one. */
+function onThisHost(cwd: string | null | undefined, known: string[]): boolean {
+  if (!cwd) return false;
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const c = norm(cwd);
+  return known.some((k) => { const r = norm(k); return c === r || c.startsWith(r + '/'); });
+}
 
 /** The account the Agents tab works in. Unset means "whatever new chats use";
  *  null is a real answer meaning the computer's own account. Listing, opening
@@ -365,14 +388,20 @@ export const useStore = create<State>((set, get) => {
   async function persistHosts(hosts: StoredHost[], active: string | null) {
     await SecureStore.setItemAsync(HOSTS_KEY, JSON.stringify(hosts));
     await SecureStore.setItemAsync(ACTIVE_KEY, active ?? '');
-    set({ hosts, activeHostId: active, host: hosts.find((h) => h.id === active) ?? null });
+    set({ hosts, activeHostId: active, host: hosts.find((h) => h.id === active) ?? null,
+          defaults: defaultsFor(get().defaultsByHost, active) });
+  }
+
+  async function persistDefaults(byHost: DefaultsByHost) {
+    set({ defaultsByHost: byHost, defaults: defaultsFor(byHost, get().activeHostId) });
+    await SecureStore.setItemAsync(DEFAULTS_KEY, JSON.stringify(byHost));
   }
 
   return {
     ready: false, hosts: [], activeHostId: null, host: null, conn: 'idle', switching: false, hostInfo: null, catalog: null, device: null,
     projects: [], accounts: [], tools: [], npmAvailable: true, loginPrompt: null, loginDone: null,
     loginBusy: false, loginSubmitting: false, installLog: '',
-    defaults: DEFAULTS, prefs: PREFS, locked: false, pushToken: null,
+    defaults: DEFAULTS, defaultsByHost: {}, prefs: PREFS, locked: false, pushToken: null,
     chats: {}, groups: [], showArchived: false, events: {}, live: {}, progress: {}, thinking: {}, busy: {}, loadedChats: {},
     agents: [], agentsLoaded: false, storeSources: [], storeLoaded: false, limits: {}, agentActivity: {}, updateStatus: null,
     chatsLoaded: false, accountsLoaded: false, projectsLoaded: false,
@@ -392,10 +421,16 @@ export const useStore = create<State>((set, get) => {
       } catch {}
       let active = (await SecureStore.getItemAsync(ACTIVE_KEY).catch(() => null)) || null;
       if (!active || !hosts.some((h) => h.id === active)) active = hosts[0]?.id ?? null;
-      const defaults = await loadJSON(DEFAULTS_KEY, DEFAULTS);
+      // Builds before per-host defaults kept one flat blob: it was whatever the
+      // last computer used, so it becomes that computer's entry and no other's.
+      const stored = await loadJSON<any>(DEFAULTS_KEY, {});
+      const byHost: DefaultsByHost = typeof stored?.provider === 'string'
+        ? (active ? { [active]: stored as Defaults } : {})
+        : (stored as DefaultsByHost);
       const prefs = await loadJSON(PREFS_KEY, PREFS);
       const host = hosts.find((h) => h.id === active) ?? null;
-      set({ hosts, activeHostId: active, host, defaults, prefs, locked: prefs.faceIdLaunch, ready: true });
+      set({ hosts, activeHostId: active, host, defaultsByHost: byHost,
+            defaults: defaultsFor(byHost, active), prefs, locked: prefs.faceIdLaunch, ready: true });
       if (host) client.connect(host.host, host.port, host.token);
     },
 
@@ -421,14 +456,19 @@ export const useStore = create<State>((set, get) => {
       }
       const hosts = get().hosts.filter((h) => h.id !== id);
       const active = wasActive ? (hosts[0]?.id ?? null) : get().activeHostId;
+      const byHost = { ...get().defaultsByHost };
+      delete byHost[id];                  // its folders and accounts go with it
+      await persistDefaults(byHost);
       await persistHosts(hosts, active);
       if (wasActive) connectTo(hosts.find((h) => h.id === active) ?? null);
     },
 
     setDefaults: async (d) => {
+      const id = get().activeHostId;
       const defaults = { ...get().defaults, ...d };
       set({ defaults });
-      await SecureStore.setItemAsync(DEFAULTS_KEY, JSON.stringify(defaults));
+      if (!id) return;                    // nothing paired yet: nowhere to file it
+      await persistDefaults({ ...get().defaultsByHost, [id]: defaults });
     },
 
     setPrefs: async (p) => {
@@ -514,6 +554,14 @@ export const useStore = create<State>((set, get) => {
     loadProjects: async () => {
       const r = await client.call('host.projects', {});
       set({ projects: r.projects, projectsLoaded: true });
+      // The computer just listed what it has. A remembered folder that is not
+      // on that list is gone — renamed, deleted, or another computer's — and
+      // keeping it only means the next chat fails on a path nobody can open.
+      const { defaults, hostInfo } = get();
+      const known = [...r.projects.map((p: Project) => p.path), ...(hostInfo?.roots ?? [])];
+      if (defaults.cwd && known.length && !onThisHost(defaults.cwd, known)) {
+        await get().setDefaults({ cwd: null });
+      }
     },
 
     openChat: async (id) => {

@@ -94,15 +94,24 @@ class PathPolicy:
         return not any(part in UNSERVABLE_DIRS for part in p.parts)
 
     def is_allowed_cwd(self, cwd: str) -> bool:
+        return self.cwd_error(cwd) is None
+
+    def cwd_error(self, cwd: str) -> str | None:
+        """None if a chat may open here, else the error code saying why not.
+
+        A folder that is simply not there is its own answer: told it was
+        "outside the allowed roots", you go looking at the roots for a folder
+        that was only renamed.
+        """
         try:
             p = Path(cwd).expanduser().resolve()
         except Exception:
-            return False
-        if not p.is_dir():
-            return False
+            return "no_such_folder"
         if any(p == d or d in p.parents for d in self.denied):
-            return False
-        return any(p == r or r in p.parents for r in self.roots)
+            return "cwd_outside"
+        if not any(p == r or r in p.parents for r in self.roots):
+            return "cwd_outside"
+        return None if p.is_dir() else "no_such_folder"
 
     def list_projects(self) -> list[dict]:
         out = []

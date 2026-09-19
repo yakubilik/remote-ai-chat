@@ -309,7 +309,8 @@ async def scenario_update_routing(db):
     host.sessions = type("S", (), {"peek": staticmethod(lambda _cid: s)})()
     host._account = lambda *a, **k: None
     host.broadcast = lambda _ev: asyncio.sleep(0)
-    host.policy = type("P", (), {"is_allowed_cwd": staticmethod(lambda _p: True)})()
+    host.policy = type("P", (), {"is_allowed_cwd": staticmethod(lambda _p: True),
+                                 "cwd_error": staticmethod(lambda _p: None)})()
 
     for field, value in (("account_id", "acct-2"), ("perm_mode", "bypass"),
                          ("max_turns", 5), ("max_budget_usd", 2.5)):

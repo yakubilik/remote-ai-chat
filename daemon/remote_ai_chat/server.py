@@ -552,8 +552,8 @@ class Server:
         if provider not in PROVIDERS:
             raise Err("unknown_provider", "unknown tool")
         cwd = d.get("cwd") or self.cfg.allowed_roots[0]
-        if not self.policy.is_allowed_cwd(cwd):
-            raise Err("cwd_outside", "folder is outside the allowed roots")
+        if err := self.policy.cwd_error(cwd):
+            raise Err(err, "that folder cannot be opened")
         cat = PROVIDERS[provider].catalog()
         model = d.get("model") or cat["models"][0]["id"]
         effort = d.get("effort") or ("high" if cat["efforts"] else None)
@@ -594,8 +594,8 @@ class Server:
         cid = d["chat_id"]
         fields = {k: v for k, v in d.items() if k != "chat_id"}
         if "cwd" in fields:
-            if not self.policy.is_allowed_cwd(fields["cwd"]):
-                raise Err("cwd_outside", "folder is outside the allowed roots")
+            if err := self.policy.cwd_error(fields["cwd"]):
+                raise Err(err, "that folder cannot be opened")
             # Same canonical form as chat.create (case/slash-insensitive on Windows).
             fields["cwd"] = str(Path(fields["cwd"]).expanduser().resolve())
         if "account_id" in fields:

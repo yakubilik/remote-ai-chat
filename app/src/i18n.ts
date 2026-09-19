@@ -166,6 +166,7 @@ const en = {
   errLoginTimeout: 'The sign-in timed out. Start it again.', errLoginIncomplete: 'The sign-in did not complete',
   errWrongAccount: 'That signed in as a different account than the one asked for. Start again and pick the right one.',
   errCwdOutside: 'That folder is outside the allowed roots', errNoChat: 'That chat no longer exists',
+  errNoSuchFolder: 'That folder is not on this computer any more',
   errBusy: 'Too many messages waiting in this chat', errEmptyMessage: 'Empty message', errNoPendingApproval: 'That approval is no longer waiting',
   wsNotConnected: 'not connected to the computer', wsDropped: 'connection lost', wsTimeout: 'timed out',
 };
@@ -192,7 +193,7 @@ const ERR_KEYS: Record<string, Key> = {
   bad_key: 'errBadKey', store_busy: 'errStoreBusy', not_an_agent: 'errNotAnAgent',
   needs_own_account: 'errNeedsOwnAccount',
   unknown_agent: 'errUnknownAgent', agent_not_removable: 'errAgentKeep', key_required: 'errKeyRequired', unknown_method: 'errUnknownMethod',
-  cwd_outside: 'errCwdOutside', no_chat: 'errNoChat', busy: 'errBusy',
+  cwd_outside: 'errCwdOutside', no_such_folder: 'errNoSuchFolder', no_chat: 'errNoChat', busy: 'errBusy',
   empty_message: 'errEmptyMessage', no_pending_approval: 'errNoPendingApproval',
 };
 
