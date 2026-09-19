@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { C, R } from '../lib/theme';
-import { Icon, P, mono, Label } from '../ui/kit';
+import { Icon, P, Radio, Label } from '../ui/kit';
 import { Modal, ModalHead } from './Modal';
 import { tilde } from '../lib/format';
 import type { Catalog, Chat, CliAccount, LimitWindow, Project } from '../lib/protocol';
@@ -25,41 +25,6 @@ function usage(windows: LimitWindow[] | undefined): string | undefined {
     .filter((w) => typeof w.utilization === 'number')
     .sort((a, b) => (b.utilization ?? 0) - (a.utilization ?? 0))[0];
   return top ? `${Math.round((top.utilization ?? 0) * 100)}% used` : undefined;
-}
-
-function Option({ label, hint, right, on, onPick }: {
-  label: string; hint?: string; right?: string; on: boolean; onPick: () => void;
-}) {
-  return (
-    <button
-      type="button" onClick={onPick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 48,
-        padding: '8px 12px', cursor: 'pointer', textAlign: 'left',
-        background: on ? C.accentTint : 'transparent',
-        border: 'none', borderBottom: `1px solid ${C.border}`,
-      }}
-    >
-      <span style={{
-        width: 15, height: 15, borderRadius: 8, flexShrink: 0,
-        border: `1.5px solid ${on ? C.accent : C.faint}`,
-        background: on ? C.accent : 'transparent',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        {on && <span style={{ width: 5, height: 5, borderRadius: 3, background: '#FFF' }} />}
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{label}</span>
-        {hint && <span style={{ display: 'block', fontSize: 12, color: C.mute, marginTop: 2 }}>{hint}</span>}
-      </span>
-      {right && (
-        <span style={{
-          ...mono, fontSize: 12, color: C.faint, flexShrink: 0, maxWidth: 220,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        }}>{right}</span>
-      )}
-    </button>
-  );
 }
 
 export function FieldSheet({ field, chat, catalog, projects, accounts, limits, busy, onPick, onClose }: {
@@ -159,7 +124,7 @@ export function FieldSheet({ field, chat, catalog, projects, accounts, limits, b
       )}
       <div style={{ overflowY: 'auto' }}>
         {rows.map((r) => (
-          <Option
+          <Radio
             key={r.value} label={r.label} hint={r.hint} right={r.right}
             on={r.value === current} onPick={() => pick(r.value)}
           />

@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { C, R } from '../lib/theme';
-import { Btn, Dot, Icon, Label, P, Segment, mono } from '../ui/kit';
+import { Btn, Dot, Icon, Label, P, Radio, Segment, mono } from '../ui/kit';
 import { Modal, ModalHead } from './Modal';
 import { ProviderMark } from './Sidebar';
+import { accountName } from './FieldSheet';
 import { tilde } from '../lib/format';
 import { useFleet } from '../lib/fleet';
+import { hostDefaults, providerDefaults, resolveDefaults, usePrefs } from '../lib/prefs';
 import { createChat } from '../lib/actions';
 import type { Chat, Provider } from '../lib/protocol';
+
+const listBox: React.CSSProperties = {
+  background: C.bg, border: `1px solid ${C.border}`, borderRadius: R.card,
+  overflow: 'hidden', marginBottom: 20,
+};
 
 export function NewChat({ hostKey, initialCwd, onDone, onClose }: {
   hostKey: string;
@@ -16,12 +23,20 @@ export function NewChat({ hostKey, initialCwd, onDone, onClose }: {
 }) {
   const slot = useFleet((s) => s.hosts[hostKey]);
   const catalog = slot?.catalog ?? null;
+  // What this computer's new chats were last left opening with — editable in
+  // Settings → New chats, and written back below when this one starts.
+  const defaults = usePrefs((s) => hostDefaults(s.defaults, hostKey));
+  const setDefaults = usePrefs((s) => s.setDefaults);
+  const setProviderDefaults = usePrefs((s) => s.setProviderDefaults);
 
-  const [provider, setProvider] = useState<Provider>('claude');
+  const [provider, setProvider] = useState<Provider>(defaults.provider);
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
   const [perm, setPerm] = useState<string | null>(null);
-  const [cwd, setCwd] = useState<string | null>(initialCwd ?? null);
+  /** '' is the computer's own sign-in, the way `chat.create` reads "no
+   *  account_id". Null is "not decided yet", before the account list arrives. */
+  const [account, setAccount] = useState<string | null>(null);
+  const [cwd, setCwd] = useState<string | null>(initialCwd ?? defaults.cwd ?? null);
   const [query, setQuery] = useState('');
   const [advanced, setAdvanced] = useState(false);
   const [maxTurns, setMaxTurns] = useState('');
@@ -37,11 +52,36 @@ export function NewChat({ hostKey, initialCwd, onDone, onClose }: {
   // knows is kept: a reconnect hands us a fresh catalog object mid-dialog, and
   // that must not quietly put the model back to the default under the user.
   useEffect(() => {
-    const fallbackEffort = pc?.efforts?.length ? pc.efforts[Math.min(2, pc.efforts.length - 1)] : null;
-    setModel((m) => (m && pc?.models.some((x) => x.id === m) ? m : pc?.models[0]?.id ?? null));
-    setEffort((e) => (e && pc?.efforts?.includes(e) ? e : fallbackEffort));
-    setPerm((p) => (p && pc?.perm_modes.includes(p) ? p : pc?.perm_modes[0] ?? null));
+    const models = pc?.models ?? [];
+    const efforts = pc?.efforts ?? [];
+    const perms = pc?.perm_modes ?? [];
+    const d = resolveDefaults(providerDefaults(defaults, provider), pc);
+    setModel((m) => (m && models.some((x) => x.id === m) ? m : d.model));
+    setEffort((e) => (e && efforts.includes(e) ? e : d.effort));
+    setPerm((p) => (p && perms.includes(p) ? p : d.perm_mode));
   }, [provider, catalog]);
+
+  // Only sign-ins of this tool can run this chat, and only ones that are
+  // actually signed in — plus the computer's own, which always counts.
+  const accounts = useMemo(
+    () => (slot?.accounts ?? []).filter((a) => a.provider === provider && (a.logged_in || a.is_default)),
+    [slot?.accounts, provider],
+  );
+
+  useEffect(() => {
+    // Nothing to check against until the list has arrived; resolving early
+    // would settle on the computer's account and never read the default.
+    if (!accounts.length) return;
+    const known = (id: string) => (id === ''
+      ? accounts.some((a) => a.is_default)
+      : accounts.some((a) => !a.is_default && a.id === id));
+    setAccount((cur) => (cur !== null && known(cur)
+      ? cur
+      : resolveDefaults(providerDefaults(defaults, provider), pc, accounts).account_id));
+  }, [provider, accounts]);
+
+  /** What the chat will actually open on, before the list settles. */
+  const accountId = account ?? providerDefaults(defaults, provider).account_id;
 
   const projects = slot?.projects ?? [];
   const recent = useMemo(() => {
@@ -66,9 +106,16 @@ export function NewChat({ hostKey, initialCwd, onDone, onClose }: {
     try {
       const chat = await createChat(hostKey, {
         provider, model, effort, perm_mode: perm ?? undefined,
+        account_id: accountId || undefined,
         cwd: cwd ?? undefined,
         max_turns: maxTurns ? Number(maxTurns) : null,
         max_budget_usd: budget ? Number(budget) : null,
+      });
+      // Starting a chat is where these are chosen, so what was chosen here is
+      // what the next one opens with. Settings shows and edits the same values.
+      setDefaults(hostKey, { provider, cwd });
+      setProviderDefaults(hostKey, provider, {
+        model, effort, perm_mode: perm, account_id: accountId,
       });
       onDone(chat);
     } catch (e: any) {
@@ -139,35 +186,33 @@ export function NewChat({ hostKey, initialCwd, onDone, onClose }: {
           })}
         </div>
 
+        {accounts.length > 1 && (
+          <>
+            <Label>Account</Label>
+            <div style={listBox}>
+              {accounts.map((a, i, arr) => {
+                const value = a.is_default ? '' : a.id;
+                return (
+                  <Radio
+                    key={a.id} label={accountName(a)}
+                    hint={a.logged_in ? a.detail : 'not signed in'}
+                    on={accountId === value} last={i === arr.length - 1}
+                    onPick={() => setAccount(value)}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )}
+
         <Label>Model</Label>
-        <div style={{
-          background: C.bg, border: `1px solid ${C.border}`, borderRadius: R.card,
-          overflow: 'hidden', marginBottom: 20,
-        }}>
+        <div style={listBox}>
           {(pc?.models ?? []).map((m, i, arr) => (
-            <button
-              key={m.id} type="button" onClick={() => setModel(m.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 48,
-                padding: '8px 12px', cursor: 'pointer', textAlign: 'left',
-                background: model === m.id ? C.accentTint : 'transparent',
-                border: 'none', borderBottom: i === arr.length - 1 ? 'none' : `1px solid ${C.border}`,
-              }}
-            >
-              <span style={{
-                width: 15, height: 15, borderRadius: 8, flexShrink: 0,
-                border: `1.5px solid ${model === m.id ? C.accent : C.faint}`,
-                background: model === m.id ? C.accent : 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                {model === m.id && <span style={{ width: 5, height: 5, borderRadius: 3, background: '#FFF' }} />}
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{m.label || m.id}</span>
-                {m.hint && <span style={{ display: 'block', fontSize: 12, color: C.mute, marginTop: 2 }}>{m.hint}</span>}
-              </span>
-              <span style={{ ...mono, fontSize: 12, color: C.faint, flexShrink: 0 }}>{m.id}</span>
-            </button>
+            <Radio
+              key={m.id} label={m.label || m.id} hint={m.hint} right={m.id}
+              on={model === m.id} last={i === arr.length - 1}
+              onPick={() => setModel(m.id)}
+            />
           ))}
           {!pc?.models.length && (
             <div style={{ padding: 16, fontSize: 13, color: C.mute }}>
@@ -279,7 +324,11 @@ export function NewChat({ hostKey, initialCwd, onDone, onClose }: {
           ...mono, fontSize: 12, color: error ? C.danger : C.mute, flex: 1, minWidth: 0,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
-          {error ?? [provider, model, effort, perm, cwd ? tilde(cwd) : null].filter(Boolean).join(' · ')}
+          {error ?? [
+            provider, model, effort, perm,
+            accountId ? accounts.find((a) => a.id === accountId)?.label : null,
+            cwd ? tilde(cwd) : null,
+          ].filter(Boolean).join(' · ')}
         </span>
         <Btn onClick={onClose}>Cancel</Btn>
         <Btn kind="primary" onClick={start} disabled={!model || busy}>

@@ -117,6 +117,44 @@ export function Segment<T extends string>({ value, options, onChange, tone }: {
   );
 }
 
+/** One choice in a list of them. Accounts, models, permission words and
+ *  folders are all picked the same way, so they all look the same way — only
+ *  the words differ. `last` drops the separator under the final row. */
+export function Radio({ label, hint, right, on, last = false, onPick }: {
+  label: string; hint?: string; right?: string; on: boolean; last?: boolean; onPick: () => void;
+}) {
+  return (
+    <button
+      type="button" onClick={onPick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 48,
+        padding: '8px 12px', cursor: 'pointer', textAlign: 'left',
+        background: on ? C.accentTint : 'transparent',
+        border: 'none', borderBottom: last ? 'none' : `1px solid ${C.border}`,
+      }}
+    >
+      <span style={{
+        width: 15, height: 15, borderRadius: 8, flexShrink: 0,
+        border: `1.5px solid ${on ? C.accent : C.faint}`,
+        background: on ? C.accent : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {on && <span style={{ width: 5, height: 5, borderRadius: 3, background: '#FFF' }} />}
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 14, fontWeight: 600 }}>{label}</span>
+        {hint && <span style={{ display: 'block', fontSize: 12, color: C.mute, marginTop: 2 }}>{hint}</span>}
+      </span>
+      {right && (
+        <span style={{
+          ...mono, fontSize: 12, color: C.faint, flexShrink: 0, maxWidth: 220,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>{right}</span>
+      )}
+    </button>
+  );
+}
+
 export function Empty({ title, hint, icon }: { title: string; hint?: string; icon?: React.ReactNode }) {
   return (
     <div style={{
@@ -202,5 +240,6 @@ export const P = {
   agent: 'M12 4a4 4 0 0 1 4 4v1h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2h1V8a4 4 0 0 1 4-4zM9 14v.1M15 14v.1',
   clock: 'M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM12 8v4l3 2',
   image: 'M4 5h16v14H4zM4 16l4-4 4 4 3-3 5 5M15 9v.1',
+  download: 'M12 4v11M8 11l4 4 4-4M5 19h14',
   mic: 'M9 4h6v8H9zM5 11a7 7 0 0 0 14 0M12 18v3',
 } as const;

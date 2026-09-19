@@ -4,8 +4,6 @@
 //  - "Open the file" / a config.toml path in the header — no config.path request.
 //  - Depolama (2.2 GB) — nothing reports disk usage.
 //  - Bildirimler — push is per device and the panel has no push registration.
-//  - Defaults for a new chat — these live in the phone's own
-//    storage, not on the daemon; the panel would need its own local blob first.
 //  - Security: the dangerous-command list and the denied-path list. host.info
 //    carries `roots` and nothing else, so only roots are shown.
 //  - Accounts: "Move a sign-in" (account.export/import exist, but moving a sign-in
@@ -15,10 +13,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { C, R } from '../lib/theme';
-import { Btn, Dot, Icon, Label, P, Segment, Spinner, mono } from '../ui/kit';
+import { Btn, Dot, Icon, Label, P, Radio, Segment, Spinner, mono } from '../ui/kit';
 import { Modal, ModalHead } from '../components/Modal';
 import { ProviderMark } from '../components/Sidebar';
 import { onAnyEvent, useFleet, type HostSlot } from '../lib/fleet';
+import { hostDefaults, providerDefaults, resolveDefaults, usePrefs } from '../lib/prefs';
 import { parsePairing, toolStatus } from '../lib/actions';
 import { errText, t } from '../lib/i18n';
 import { ago, tilde, until, uptime, windowName } from '../lib/format';
@@ -35,11 +34,12 @@ import type {
 
 const RAIL_W = 232;
 
-type SectionId = 'hosts' | 'accounts' | 'tools' | 'security' | 'about';
+type SectionId = 'hosts' | 'accounts' | 'defaults' | 'tools' | 'security' | 'about';
 
 const SECTIONS: { id: SectionId; label: string; icon: string }[] = [
   { id: 'hosts', label: 'Computers', icon: P.cpu },
   { id: 'accounts', label: 'Accounts', icon: P.agent },
+  { id: 'defaults', label: 'New chats', icon: P.plus },
   { id: 'tools', label: 'Tools', icon: P.bolt },
   { id: 'security', label: 'Security', icon: P.shield },
   { id: 'about', label: 'About', icon: P.layout },
@@ -854,6 +854,142 @@ function ToolsSection({ tools, npm, loading, problem, onReload }: {
   );
 }
 
+/** Where the New chat dialog gets its opening answers. Unlike everything else
+ *  on this screen these are the panel's own, not the daemon's: the phone keeps
+ *  the same preference in its own storage, and neither can see the other's. */
+function DefaultsSection({ hostKey, slot }: { hostKey: string; slot: HostSlot }) {
+  const { refreshAccounts } = useFleet();
+  const defaults = usePrefs((s) => hostDefaults(s.defaults, hostKey));
+  const setDefaults = usePrefs((s) => s.setDefaults);
+  const setProviderDefaults = usePrefs((s) => s.setProviderDefaults);
+  const online = slot.status === 'online';
+
+  // Same reason AccountsSection asks: account.list shells out to the CLIs, so
+  // it is asked for once and only re-asked when something needs it.
+  useEffect(() => {
+    if (online && !slot.accounts.length && !slot.loading.accounts) {
+      refreshAccounts(hostKey).catch(() => {});
+    }
+  }, [hostKey, online]);
+
+  const provider = defaults.provider;
+  const pc = slot.catalog?.[provider] ?? null;
+  const accounts = useMemo(
+    () => slot.accounts.filter((a) => a.provider === provider && (a.logged_in || a.is_default)),
+    [slot.accounts, provider],
+  );
+  // What New chat would open with right now, stored answers and all.
+  const now = resolveDefaults(providerDefaults(defaults, provider), pc, accounts);
+  const installed = (['claude', 'codex'] as Provider[]).filter((p) => slot.catalog?.[p]);
+
+  return (
+    <>
+      <Head
+        title="New chats"
+        hint="What the New chat dialog opens with on this computer. Nothing here is a lock — starting a chat with something else changes these to match."
+      />
+
+      <Label>tool</Label>
+      <div style={{ marginBottom: 10 }}>
+        <Segment
+          value={provider} options={installed.length ? installed : (['claude'] as Provider[])}
+          onChange={(p) => setDefaults(hostKey, { provider: p })}
+        />
+      </div>
+      <Note>
+        New chats open with this tool, and everything below belongs to it.
+        To set the other one’s defaults, switch to it here first.
+      </Note>
+
+      <Label>account</Label>
+      <Card>
+        {accounts.map((a, i, arr) => {
+          const value = a.is_default ? '' : a.id;
+          return (
+            <Radio
+              key={a.id} label={accountName(a)}
+              hint={a.logged_in ? a.detail : 'not signed in'}
+              on={now.account_id === value} last={i === arr.length - 1}
+              onPick={() => setProviderDefaults(hostKey, provider, { account_id: value })}
+            />
+          );
+        })}
+        {!accounts.length && (
+          <div style={{ padding: 14, fontSize: 12.5, color: C.mute }}>
+            {online ? 'No account of this tool is signed in on that computer.' : 'The computer is offline.'}
+          </div>
+        )}
+      </Card>
+
+      <Label>model</Label>
+      <Card>
+        {(pc?.models ?? []).map((m, i, arr) => (
+          <Radio
+            key={m.id} label={m.label || m.id} hint={m.hint} right={m.id}
+            on={now.model === m.id} last={i === arr.length - 1}
+            onPick={() => setProviderDefaults(hostKey, provider, { model: m.id })}
+          />
+        ))}
+        {!pc?.models.length && (
+          <div style={{ padding: 14, fontSize: 12.5, color: C.mute }}>
+            {online ? 'That computer listed no models for this tool.' : 'The computer is offline.'}
+          </div>
+        )}
+      </Card>
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <Label>effort</Label>
+          {pc?.efforts?.length
+            ? <Segment
+                value={now.effort} options={pc.efforts}
+                onChange={(e) => setProviderDefaults(hostKey, provider, { effort: e })}
+              />
+            : <div style={{ fontSize: 12.5, color: C.mute }}>this tool has no effort setting</div>}
+        </div>
+        <div style={{ flex: 1 }}>
+          <Label>permission mode</Label>
+          <Segment
+            value={now.perm_mode} options={pc?.perm_modes ?? []}
+            onChange={(m) => setProviderDefaults(hostKey, provider, { perm_mode: m })}
+            tone={(v) => (v === 'bypass' ? 'warn' : 'plain')}
+          />
+        </div>
+      </div>
+      {now.perm_mode === 'bypass' && (
+        <Note tone="warn">
+          Every new chat will start in bypass — no permission questions.
+          The dangerous-command list still asks, even there.
+        </Note>
+      )}
+
+      <Label>project folder</Label>
+      <Card>
+        {/* A computer can have a hundred folders; the list scrolls rather than
+            pushing everything else off the screen. */}
+        <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+          <Radio
+            label="Ask each time" hint="New chat opens with no folder picked"
+            on={!defaults.cwd} last={!slot.projects.length}
+            onPick={() => setDefaults(hostKey, { cwd: null })}
+          />
+          {slot.projects.map((pr, i, arr) => (
+            <Radio
+              key={pr.path} label={pr.name} right={tilde(pr.path)}
+              on={defaults.cwd === pr.path} last={i === arr.length - 1}
+              onPick={() => setDefaults(hostKey, { cwd: pr.path })}
+            />
+          ))}
+        </div>
+      </Card>
+
+      <Note>
+        Remembered in this browser, for this computer — the phone app keeps its own.
+      </Note>
+    </>
+  );
+}
+
 function SecuritySection({ slot }: { slot: HostSlot }) {
   const roots = slot.info?.roots ?? [];
   return (
@@ -1019,6 +1155,9 @@ export function Settings() {
 
             {section === 'accounts' && slot && focus && (
               <AccountsSection hostKey={focus} slot={slot} tools={tools} />
+            )}
+            {section === 'defaults' && slot && focus && (
+              <DefaultsSection hostKey={focus} slot={slot} />
             )}
             {section === 'tools' && slot && (
               <ToolsSection
