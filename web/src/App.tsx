@@ -174,6 +174,15 @@ export function App() {
       { id: 'agents', label: 'Agents', shortcut: '⌘3', run: () => setView('agents') },
       { id: 'settings', label: 'Settings', shortcut: '⌘,', run: () => setView('settings') },
     ];
+    // Only means anything with more than one computer paired.
+    if (fleet.order.length > 1) {
+      list.push({
+        id: 'all-hosts',
+        label: fleet.allHosts ? 'Show one computer' : 'Show every computer',
+        hint: fleet.allHosts ? (slot?.info?.name ?? undefined) : `${fleet.order.length} paired`,
+        run: () => { fleet.setAllHosts(!fleet.allHosts); setView('chats'); },
+      });
+    }
     const running = fleet.order.flatMap((k) =>
       (fleet.hosts[k]?.chats ?? []).filter((c) => c.status !== 'idle').map((c) => ({ k, c })));
     if (running.length) {
@@ -186,7 +195,7 @@ export function App() {
       });
     }
     return list;
-  }, [fleet.hosts, fleet.order, slot?.info?.name]);
+  }, [fleet.hosts, fleet.order, fleet.allHosts, slot?.info?.name]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -219,7 +228,7 @@ export function App() {
       <div style={{ display: 'flex', height: '100vh', background: C.bg, overflow: 'hidden' }}>
         <Sidebar
           view={view} onView={setView}
-          selected={sel?.chatId ?? null} onSelect={open}
+          selected={sel?.chatId ?? null} selectedHost={sel?.hostKey ?? null} onSelect={open}
           onNewChat={() => setNewChat({})}
           searchRef={searchRef}
         />

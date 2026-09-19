@@ -64,12 +64,17 @@ interface FleetState {
   activity: Activity[];
   /** which computer the chat/projects/agents screens are looking at */
   focus: string | null;
+  /** chats from every paired computer in one list, rather than just `focus`.
+   *  `focus` keeps running underneath it — it is still the computer a new chat
+   *  would start on, and the one the other screens look at. */
+  allHosts: boolean;
   ready: boolean;
 
   boot: () => void;
   addHost: (cfg: HostConfig) => void;
   removeHost: (key: string) => void;
   setFocus: (key: string | null) => void;
+  setAllHosts: (on: boolean) => void;
   refresh: (key: string) => Promise<void>;
   refreshAccounts: (key: string) => Promise<void>;
   call: <T = any>(key: string, type: string, data?: Record<string, any>) => Promise<T>;
@@ -94,6 +99,12 @@ function loadHosts(): HostConfig[] {
 
 function saveHosts(hosts: HostConfig[]) {
   localStorage.setItem('rac.hosts', JSON.stringify(hosts));
+}
+
+/** Which way the chat list was left last time. Remembered because it is a way
+ *  of working, not a filter you re-pick every morning. */
+function loadAllHosts(): boolean {
+  try { return localStorage.getItem('rac.allHosts') === '1'; } catch { return false; }
 }
 
 /** A pairing handed over in the address bar: the `web` command opens the panel
@@ -121,6 +132,7 @@ export const useFleet = create<FleetState>((set, get) => ({
   order: [],
   activity: [],
   focus: null,
+  allHosts: loadAllHosts(),
   ready: false,
 
   boot: () => {
@@ -176,6 +188,11 @@ export const useFleet = create<FleetState>((set, get) => ({
   },
 
   setFocus: (key) => set({ focus: key }),
+
+  setAllHosts: (on) => {
+    localStorage.setItem('rac.allHosts', on ? '1' : '0');
+    set({ allHosts: on });
+  },
 
   call: async (key, type, data = {}) => {
     const c = clients.get(key);
