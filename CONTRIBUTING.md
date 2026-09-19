@@ -53,6 +53,8 @@ python scripts/smoke.py --token TOKEN          # 18 protocol checks, no model tu
 .venv312/bin/python scripts/test_preamble.py   # session context and register
 .venv312/bin/python scripts/test_session.py
 .venv312/bin/python scripts/test_stream.py
+.venv312/bin/python scripts/test_attachments.py
+.venv312/bin/python scripts/test_pool.py
 
 cd app && npx tsc --noEmit
 cd web && npm run build                        # typechecks, then builds into the daemon
