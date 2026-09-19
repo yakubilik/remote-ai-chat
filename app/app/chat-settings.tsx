@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore, useT } from '../src/store';
 import { colors, radius, type } from '../src/theme';
-import { Button, Card, Label, OptionList, Segmented } from '../src/components/ui';
+import { Button, Card, Label, OptionList, Segmented, Toggle } from '../src/components/ui';
 import { FolderPicker, GroupPicker, ProviderPicker } from '../src/components/pickers';
 import type { Provider } from '../src/protocol';
 
@@ -27,6 +27,8 @@ export default function ChatSettings() {
   const [maxTurns, setMaxTurns] = useState(chat?.max_turns ? String(chat.max_turns) : '');
   const [budget, setBudget] = useState(chat?.max_budget_usd ? String(chat.max_budget_usd) : '');
   const [saving, setSaving] = useState(false);
+  const pool = useStore((st) => st.pool);
+  const [pinned, setPinned] = useState(!!chat?.pool_pinned);
 
   useEffect(() => { void loadProjects().catch(() => {}); }, [loadProjects]);
   useEffect(() => {
@@ -51,6 +53,7 @@ export default function ChatSettings() {
         title: title.trim().slice(0, 60) || chat!.title,
         max_turns: maxTurns.trim() ? Number(maxTurns) : null,
         max_budget_usd: budget.trim() ? Number(budget) : null,
+        pool_pinned: pinned ? 1 : 0,
       } as any);
       void setDefaults({ provider, model, effort: effort ?? 'high', perm_mode: perm, cwd: cwd ?? undefined });
       router.back();
@@ -101,6 +104,18 @@ export default function ChatSettings() {
             </View>
           </View>
         </View>
+        {pool?.enabled && (
+          <View style={{ gap: 8 }}>
+            <Label>{T('poolSection')}</Label>
+            <Card style={{ backgroundColor: colors.bg }}>
+              <View style={styles.poolRow}>
+                <Text style={[type.sub, { color: colors.text, flex: 1 }]}>{T('poolChatPin')}</Text>
+                <Toggle value={pinned} onChange={setPinned} />
+              </View>
+            </Card>
+            <Text style={[type.caption, { color: colors.muted }]}>{T('poolChatPinHint')}</Text>
+          </View>
+        )}
         <Text style={[type.caption, { color: colors.muted }]}>
           {T('sessionInfo', { id: chat.provider_session_id ? chat.provider_session_id.slice(0, 8) : T('notYet'), cost: chat.total_cost_usd.toFixed(2) })}
         </Text>
@@ -114,5 +129,6 @@ export default function ChatSettings() {
 const styles = StyleSheet.create({
   handle: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, backgroundColor: 'rgba(241,236,227,0.2)', marginTop: 10, marginBottom: 12 },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingBottom: 18 },
+  poolRow: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 12 },
   input: { height: 48, borderRadius: radius.md, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, color: colors.text, fontSize: 16 },
 });

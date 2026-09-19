@@ -20,6 +20,7 @@ from .updater import Updater
 from .config import Config, DB_PATH, UPLOAD_DIR, Device
 from .db import DB
 from . import accounts as acct
+from . import pool as poolmod
 from .errors import Err
 from . import agents, tools
 from .push import send_push
@@ -99,7 +100,9 @@ class Server:
         self.policy = PathPolicy(cfg.allowed_roots, cfg.denied_paths)
         self.sessions = SessionManager(self.db, cfg, self.broadcast, self.notify,
                                        resolve_account=self._resolve_account_home,
-                                       agent_prompt=self._agent_prompt)
+                                       agent_prompt=self._agent_prompt,
+                                       pool_pick=self._pool_pick,
+                                       pool_next=self._pool_next_for)
         self.clients: dict[WebSocket, Device] = {}
         self.accounts: dict[str, acct.Account] = {}
         self.logins: dict[str, acct.LoginSession] = {}
@@ -107,6 +110,14 @@ class Server:
         # account id -> window -> last reported usage of the plan's limits,
         # reloaded from disk so a restart does not blank the ring out.
         self.limits: dict[str, dict[str, dict]] = self.db.load_limits()
+        # Several sign-ins of one tool, driven as one. It reads the two
+        # dictionaries above rather than keeping copies: an account is added or
+        # a window fills, and the pool is already looking at the new answer.
+        self.pool = poolmod.Pool(poolmod.Settings.from_dict(cfg.pool),
+                                 lambda: self.accounts, self._limit_rows)
+        # Sweeps in flight. Held onto because a task nobody references can be
+        # collected mid-await, and this one is moving chats between accounts.
+        self._sweeps: set[asyncio.Task] = set()
         # Every computer follows origin/main on its own. Set when an update has
         # been staged and the supervisor should take it from here.
         self.restart_requested = asyncio.Event()
@@ -255,7 +266,7 @@ class Server:
         return a
 
     # ── fan-out ────────────────────────────────────────────────────────────
-    def _remember_limits(self, event: dict) -> None:
+    def _remember_limits(self, event: dict) -> str | None:
         """Keep the last word on every plan window, on disk as well as in
         memory. A report only arrives while a turn is running, so what was
         remembered is all there is to show between turns — and after a restart
@@ -277,22 +288,163 @@ class Server:
                   if d.get(k) is not None}
         kept = [{**shared, **r, "at": now} for r in rows if isinstance(r, dict) and r.get("window")]
         if not kept:
-            return
+            return None
         slot = self.limits.setdefault(key, {})
+        self._learn_steps(slot, kept)
         for r in kept:
             slot[str(r["window"])] = r
         try:
             self.db.save_limits(key, kept, now)
         except Exception as e:
             log.warning("could not write down the plan's limits: %s", e)
+        return key
+
+    @staticmethod
+    def _learn_steps(previous: dict[str, dict], kept: list[dict]) -> None:
+        """How far a window can move between two readings of it.
+
+        The only thing the daemon cannot see is what happens between reports,
+        and this is the measurement of it: the biggest jump one window has ever
+        made on this account. A margin that size is the difference between
+        stopping before the line and noticing after it. It is carried forward
+        rather than recomputed, because the worst case is what matters and it
+        may not happen again for days; a window rolling over is a drop, not a
+        jump, and is ignored.
+        """
+        for r in kept:
+            old = previous.get(str(r.get("window"))) or {}
+            was, now_ = old.get("utilization"), r.get("utilization")
+            step = old.get("step")
+            if isinstance(was, (int, float)) and isinstance(now_, (int, float)) and now_ > was:
+                jump = float(now_) - float(was)
+                step = jump if not isinstance(step, (int, float)) else max(float(step), jump)
+            if isinstance(step, (int, float)):
+                r["step"] = step
 
     def limits_for(self, account_id: str | None, provider: str = "claude") -> list[dict]:
-        key = account_id or acct.DEFAULT_ID + "-" + provider
+        return self._limit_rows(account_id or acct.DEFAULT_ID + "-" + provider)
+
+    def _limit_rows(self, key: str) -> list[dict]:
         return sorted(self.limits.get(key, {}).values(), key=lambda x: str(x.get("window")))
 
     async def h_limits_get(self, dev: Device, d: dict) -> dict:
         return {"accounts": {k: sorted(v.values(), key=lambda x: str(x.get("window")))
                              for k, v in self.limits.items()}}
+
+    # ── the pool ───────────────────────────────────────────────────────────
+    async def h_pool_get(self, dev: Device, d: dict) -> dict:
+        """What the pool is set to, and where every sign-in stands under it."""
+        return {"settings": self.pool.settings.to_dict(),
+                "accounts": self.pool.states(d.get("provider"))}
+
+    async def h_pool_set(self, dev: Device, d: dict) -> dict:
+        """Change the pool. Only the keys that were sent move, so the phone can
+        flip the switch without having to know the rest of the settings."""
+        raw = {**self.pool.settings.to_dict(),
+               **{k: v for k, v in d.items()
+                  if k in ("enabled", "threshold", "thresholds", "use_overage",
+                           "overage_by_account", "reserve", "order", "max_hops")}}
+        self.pool.settings = poolmod.Settings.from_dict(raw)
+        self.cfg.pool = self.pool.settings.to_dict()
+        self.cfg.save()
+        await self.broadcast({"seq": None, "chat_id": None, "event": "pool.updated",
+                              "data": {"settings": self.cfg.pool,
+                                       "accounts": self.pool.states()}, "ts": time.time()})
+        return {"settings": self.cfg.pool, "accounts": self.pool.states()}
+
+    async def _pool_pick(self, chat: dict) -> str | None:
+        """Which sign-in should this chat's next turn open on?
+
+        None means "the one it is already on" — the answer for every chat while
+        the pool is off, for a chat pinned to its account on purpose, and for
+        one whose account still has room. Only a blocked account produces a
+        move, and only to a sign-in that is actually signed in.
+
+        The pool being on is the whole opt-in: a mode, not a per-chat setting
+        anybody has to remember. `pool_pinned` is the way out of it, for the
+        chat that has to stay on one sign-in.
+        """
+        if not self.pool.settings.enabled or chat.get("pool_pinned"):
+            return None
+        provider = chat.get("provider") or "claude"
+        current = chat.get("account_id") or acct.DEFAULT_ID + "-" + provider
+        if not self.pool.state(current, provider).blocked:
+            return None
+        return await self._pool_next(provider, {current})
+
+    async def _pool_next_for(self, chat: dict) -> str | None:
+        """Where a chat whose turn has just been stopped should carry on.
+
+        Split from `_pool_pick` because it is asked at a different moment and
+        answers a different question: the decision to move has already been
+        made and acted on, and all that is left is where to.
+        """
+        if not self.pool.settings.enabled or chat.get("pool_pinned"):
+            return None
+        provider = chat.get("provider") or "claude"
+        current = chat.get("account_id") or acct.DEFAULT_ID + "-" + provider
+        return await self._pool_next(provider, {current})
+
+    async def _pool_next(self, provider: str, exclude: set[str]) -> str | None:
+        """The next sign-in worth moving to, confirmed to still be signed in.
+
+        The pool ranks accounts on what their plans last reported. Whether a
+        sign-in is still valid is a different question and only the CLI can
+        answer it, at the cost of a subprocess — so it is asked of candidates
+        one at a time, best first, and only when somebody is about to be moved.
+        """
+        for aid in self.pool.candidates(provider, exclude)[:self.pool.settings.max_hops]:
+            a = self.accounts.get(aid)
+            if a is None:
+                continue
+            try:
+                await asyncio.to_thread(acct.refresh, a)
+            except Exception:
+                continue
+            if a.logged_in:
+                return aid
+        return None
+
+    def _sessions_on(self, account_key: str) -> list:
+        """Every running chat on this sign-in that the pool may move."""
+        out = []
+        for cid, s in list(self.sessions.sessions.items()):
+            if not s.is_busy():
+                continue
+            chat = self.db.get_chat(cid) or {}
+            if chat.get("pool_pinned"):
+                continue
+            provider = chat.get("provider") or "claude"
+            if self.pool.key(chat.get("account_id"), provider) == account_key:
+                out.append(s)
+        return out
+
+    async def _pool_sweep(self, account_key: str) -> None:
+        """A window just filled. Take every running chat off this sign-in.
+
+        The report arrives on one chat's turn, but the limit belongs to the
+        account, so every chat on it is equally out of plan. The idle ones are
+        caught later, by `_pool_pick`, when their next turn opens; these are the
+        ones that cannot wait, because they are mid-sentence.
+        """
+        try:
+            a = self.accounts.get(account_key)
+            if a is None or not self.pool.state(account_key, a.provider).blocked:
+                return
+            live = self._sessions_on(account_key)
+            if not live:
+                return
+            # Stop first, choose afterwards. Working out where a chat goes next
+            # means asking the CLI whether that sign-in is still signed in, and
+            # that is a subprocess — half a second in which the model is still
+            # generating on a plan that has already run out. When the user has
+            # said not to spend past the plan, that half second is the whole
+            # thing we are here to prevent. The session asks for itself, once
+            # the model has actually stopped.
+            for s in live:
+                await s.handover(None, "limit")
+        except Exception:
+            log.exception("the pool could not move a chat off %s", account_key)
 
     async def _announce_update(self, data: dict) -> None:
         await self.broadcast({"seq": None, "chat_id": None,
@@ -314,7 +466,11 @@ class Server:
 
     async def broadcast(self, event: dict) -> None:
         if event.get("event") == "limits":
-            self._remember_limits(event)
+            key = self._remember_limits(event)
+            if key and self.pool.settings.enabled:
+                task = asyncio.create_task(self._pool_sweep(key))
+                self._sweeps.add(task)
+                task.add_done_callback(self._sweeps.discard)
         msg = json.dumps({"type": "event", "event": event["event"], "chat_id": event.get("chat_id"),
                           "seq": event.get("seq"), "data": event.get("data"), "ts": event.get("ts")},
                          ensure_ascii=False, default=str)
@@ -567,7 +723,7 @@ class Server:
                 and not agents.find(agent_id, self._account(account_id, provider).home, cwd):
             raise Err("no_agent", "that agent is not on this computer")
         chat = self.db.create_chat(
-            account_id=account_id, agent_id=agent_id,
+            account_id=account_id, agent_id=agent_id, pool_pinned=1 if d.get("pool_pinned") else 0,
             provider=provider, model=model, effort=effort, perm_mode=perm,
             cwd=str(Path(cwd).expanduser().resolve()), group_id=d.get("group_id"),
             title=(d.get("title") or NEW_CHAT_TITLE)[:60],

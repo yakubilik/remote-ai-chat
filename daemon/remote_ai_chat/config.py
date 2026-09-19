@@ -84,6 +84,9 @@ class Config:
     update_interval_s: int = 900
     devices: dict[str, Device] = field(default_factory=dict)
     accounts: dict[str, dict] = field(default_factory=dict)   # id -> stored fields
+    # Several sign-ins of one tool, driven as one: see pool.Settings. Off until
+    # somebody turns it on — a machine with one account has nothing to pool.
+    pool: dict = field(default_factory=dict)
 
     # ── persistence ────────────────────────────────────────────────────────
     @classmethod
@@ -97,9 +100,11 @@ class Config:
             did: _device(did, d) for did, d in raw.pop("devices", {}).items()
         }
         accounts = raw.pop("accounts", {})
+        pool = raw.pop("pool", {})
         cfg = cls(**{k: v for k, v in raw.items() if k in cls.__dataclass_fields__})
         cfg.devices = devices
         cfg.accounts = accounts
+        cfg.pool = pool if isinstance(pool, dict) else {}
         cfg._devices_mtime = _mtime(CONFIG_PATH)
         return cfg
 
@@ -119,6 +124,7 @@ class Config:
                 for d in self.devices.values()
             },
             "accounts": self.accounts,
+            "pool": self.pool,
         }
         tmp = CONFIG_PATH.with_suffix(".tmp")
         tmp.write_text(tomli_w.dumps(data))

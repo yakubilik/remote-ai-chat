@@ -75,6 +75,7 @@ export default function Settings() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const T = useT();
+  const pool = useStore((s) => s.pool);
   const { accounts, hosts, activeHostId, hostInfo, conn, defaults, prefs, device, setPrefs, setDevicePrefs, switchHost, removeHost, authenticate, pushToken, refreshHost, catalog, updateStatus, checkUpdate, applyUpdate } = useStore();
   const [updBusy, setUpdBusy] = useState(false);
   const accountSummary = accounts.length
@@ -162,7 +163,9 @@ export default function Settings() {
         <View style={{ gap: 8 }}>
           <Label>{T('accounts')}</Label>
           <Card>
-            <Row label={T('accounts')} value={accountSummary} onPress={() => router.push('/accounts')} last />
+            <Row label={T('accounts')} value={accountSummary} onPress={() => router.push('/accounts')} />
+            <Row label={T('pool')} value={pool?.enabled ? T('on') : T('off')}
+                 onPress={() => router.push('/pool')} last />
           </Card>
         </View>
 

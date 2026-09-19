@@ -87,7 +87,8 @@ class DB:
     def _migrate(self) -> None:
         """Additive column migrations for databases created by older versions."""
         have = {r[1] for r in self._c.execute("PRAGMA table_info(chats)")}
-        for col, decl in (("account_id", "TEXT"), ("agent_id", "TEXT")):
+        for col, decl in (("account_id", "TEXT"), ("agent_id", "TEXT"),
+                          ("pool_pinned", "INTEGER DEFAULT 0")):
             if col not in have:
                 self._c.execute(f"ALTER TABLE chats ADD COLUMN {col} {decl}")
         self._c.commit()
@@ -133,7 +134,7 @@ class DB:
             "id": new_id(), "group_id": None, "title": "New chat",
             "provider": "claude", "model": "fable", "effort": "high",
             "perm_mode": "ask", "cwd": "", "provider_session_id": None, "account_id": None,
-            "agent_id": None,
+            "agent_id": None, "pool_pinned": 0,
             "status": "idle", "last_preview": "", "max_turns": None,
             "max_budget_usd": None, "total_cost_usd": 0.0, "pinned": 0,
             "archived": 0, "created_at": now, "updated_at": now, "session_ids": "{}",
@@ -149,7 +150,8 @@ class DB:
     def update_chat(self, cid: str, **fields: Any) -> dict | None:
         allowed = {"group_id", "title", "provider", "model", "effort", "perm_mode", "cwd",
                    "provider_session_id", "status", "last_preview", "max_turns",
-                   "max_budget_usd", "total_cost_usd", "pinned", "archived", "session_ids", "account_id", "agent_id"}
+                   "max_budget_usd", "total_cost_usd", "pinned", "archived", "session_ids",
+                   "account_id", "agent_id", "pool_pinned"}
         fields = {k: v for k, v in fields.items() if k in allowed}
         if not fields:
             return self.get_chat(cid)

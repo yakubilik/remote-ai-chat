@@ -4,7 +4,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback } from 'react';
 import { client, type ConnStatus } from './ws';
 import { t as tt, type Key } from './i18n';
-import type { Agent, Catalog, Chat, CliAccount, LimitWindow, LimitsEvent, UpdateStatus, StoreSource, Provider, Defaults, Group, HostConfig, HostInfo, LoginDone, LoginPrompt, Project, RacEvent, ToolStatus } from './protocol';
+import type { Agent, Catalog, Chat, CliAccount, LimitWindow, LimitsEvent, PoolAccount, PoolSettings, UpdateStatus, StoreSource, Provider, Defaults, Group, HostConfig, HostInfo, LoginDone, LoginPrompt, Project, RacEvent, ToolStatus } from './protocol';
 
 const HOSTS_KEY = 'rac.hosts';
 const ACTIVE_KEY = 'rac.activeHost';
@@ -58,6 +58,12 @@ interface State {
   loadAgents: (accountId?: string | null, cwd?: string | null) => Promise<void>;
   // account id -> the windows that account's plan reports
   limits: Record<string, LimitWindow[]>;
+  // Several sign-ins of one tool, driven as one. Null until the computer has
+  // been asked — an off pool and an unasked one are not the same thing.
+  pool: PoolSettings | null;
+  poolAccounts: PoolAccount[];
+  loadPool: () => Promise<void>;
+  setPool: (patch: Partial<PoolSettings>) => Promise<void>;
   // tool call id -> what the background agent it started is doing right now.
   // Live only: a helper's step-by-step is progress, not conversation, and the
   // answer it produces arrives as that tool's result.
@@ -241,6 +247,9 @@ export const useStore = create<State>((set, get) => {
       client.call<{ accounts: Record<string, LimitWindow[]> }>('limits.get', {})
         .then((r) => set({ limits: r.accounts ?? {} }))
         .catch(() => {});
+      // An older computer has no pool at all; that is not an error, it just
+      // means the settings screen has nothing to offer.
+      void get().loadPool();
       await get().refresh();
       // Nothing else is caught up here on purpose. Every chat ever opened used
       // to be re-fetched, one await after another, on every single reconnect —
@@ -293,6 +302,9 @@ export const useStore = create<State>((set, get) => {
         set({ limits: { ...get().limits, [key]: [...rest, ...incoming] } });
         return;
       }
+      case 'pool.updated':
+        set({ pool: ev.data.settings ?? null, poolAccounts: ev.data.accounts ?? [] });
+        return;
       case 'update.available': set({ updateStatus: { ...(get().updateStatus ?? {} as UpdateStatus), ...ev.data } }); return;
       case 'update.applied': return;   // the socket is about to drop; the reconnect tells the truth
       case 'agent.activity': {
@@ -361,7 +373,7 @@ export const useStore = create<State>((set, get) => {
     return {
       chats: {}, groups: [], events: {}, live: {}, busy: {}, loadedChats: {}, hostInfo: null, catalog: null, device: null, projects: [],
       chatsLoaded: false, accountsLoaded: false, projectsLoaded: false, accounts: [],
-      agents: [], agentsLoaded: false, storeSources: [], storeLoaded: false, limits: {}, agentActivity: {}, updateStatus: null,
+      agents: [], agentsLoaded: false, storeSources: [], storeLoaded: false, limits: {}, pool: null, poolAccounts: [], agentActivity: {}, updateStatus: null,
     };
   };
 
@@ -377,7 +389,7 @@ export const useStore = create<State>((set, get) => {
       // Hold on to `chats`/`groups` — they are what is on screen — and drop
       // everything else now, since no screen draws it without a live computer.
       set({ hostInfo: null, catalog: null, device: null, projects: [], accounts: [],
-            agents: [], agentsLoaded: false, storeSources: [], storeLoaded: false, limits: {}, agentActivity: {}, updateStatus: null,
+            agents: [], agentsLoaded: false, storeSources: [], storeLoaded: false, limits: {}, pool: null, poolAccounts: [], agentActivity: {}, updateStatus: null,
             chatsLoaded: false, accountsLoaded: false, projectsLoaded: false, switching: true });
     } else {
       set({ ...perHost(), switching: false });
@@ -403,7 +415,7 @@ export const useStore = create<State>((set, get) => {
     loginBusy: false, loginSubmitting: false, installLog: '',
     defaults: DEFAULTS, defaultsByHost: {}, prefs: PREFS, locked: false, pushToken: null,
     chats: {}, groups: [], showArchived: false, events: {}, live: {}, progress: {}, thinking: {}, busy: {}, loadedChats: {},
-    agents: [], agentsLoaded: false, storeSources: [], storeLoaded: false, limits: {}, agentActivity: {}, updateStatus: null,
+    agents: [], agentsLoaded: false, storeSources: [], storeLoaded: false, limits: {}, pool: null, poolAccounts: [], agentActivity: {}, updateStatus: null,
     chatsLoaded: false, accountsLoaded: false, projectsLoaded: false,
 
     init: async () => {
@@ -639,6 +651,22 @@ export const useStore = create<State>((set, get) => {
       set({ agents: r.agents, agentsLoaded: true });
     },
 
+    loadPool: async () => {
+      try {
+        const r = await client.call<{ settings: PoolSettings; accounts: PoolAccount[] }>('pool.get', {});
+        set({ pool: r.settings ?? null, poolAccounts: r.accounts ?? [] });
+      } catch {
+        // A computer that predates the pool answers "unknown request". Nothing
+        // is broken; there is simply nothing to show.
+        set({ pool: null, poolAccounts: [] });
+      }
+    },
+
+    setPool: async (patch) => {
+      const r = await client.call<{ settings: PoolSettings; accounts: PoolAccount[] }>('pool.set', patch);
+      set({ pool: r.settings ?? null, poolAccounts: r.accounts ?? [] });
+    },
+
     loadStore: async () => {
       const r = await client.call<{ sources: StoreSource[] }>('agent.store', {});
       set({ storeSources: r.sources, storeLoaded: true });
@@ -766,7 +794,7 @@ function guessMime(name: string) {
 
 export interface TimelineItem {
   key: string;
-  kind: 'user' | 'assistant' | 'tool' | 'tools' | 'approval' | 'done' | 'error';
+  kind: 'user' | 'assistant' | 'tool' | 'tools' | 'approval' | 'done' | 'error' | 'switch';
   data: any;
   result?: any;
   decision?: string | null;
@@ -794,6 +822,11 @@ export function buildTimeline(events: RacEvent[]): TimelineItem[] {
       case 'approval.resolved': { const i = apprIdx.get(ev.data.request_id); if (i != null) items[i] = { ...items[i], decision: ev.data.decision }; break; }
       case 'turn.done': items.push({ key: `d${ev.seq}`, kind: 'done', data: ev.data }); break;
       case 'turn.error': items.push({ key: `e${ev.seq}`, kind: 'error', data: ev.data }); break;
+      // The pool moved this chat to another sign-in, or found it had nowhere
+      // to move it to. Either way the reader is owed a line saying so: the
+      // answer that follows comes from a session that was handed a summary.
+      case 'account.switched': items.push({ key: `s${ev.seq}`, kind: 'switch', data: ev.data }); break;
+      case 'pool.exhausted': items.push({ key: `x${ev.seq}`, kind: 'switch', data: { ...ev.data, to: null } }); break;
     }
   }
   return groupTools(items);

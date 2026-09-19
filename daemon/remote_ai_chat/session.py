@@ -34,6 +34,20 @@ RECAP_MESSAGES = 30       # messages kept after filtering
 RECAP_MSG_CHARS = 1200    # per message
 RECAP_TOTAL_CHARS = 12000 # whole recap
 
+# Handed to the sign-in that picks a turn up after the pool moved it. The
+# transcript comes first (see _build_recap), this says what to do with it.
+HANDOVER_NOTE = (
+    "The account this chat was running on reached its plan limit part-way "
+    "through that last turn, so the work has moved to the user's next sign-in "
+    "\u2014 this session. Same model, same effort; a different context, which is "
+    "why the transcript is above.\n\n"
+    "Carry on from where it stopped. What the transcript shows as already done "
+    "is done: the switch undoes nothing, so a file that was written is still "
+    "written and a command that ran still ran. Look before you redo any of it "
+    "\u2014 read the files, check the working tree \u2014 and then finish what the user "
+    "asked for. Say nothing about the switch; the user has already been told."
+)
+
 # Chat columns that _make_provider reads. Changing one of these means the live
 # provider is built from stale settings and has to be rebuilt. Keep this in step
 # with _make_provider: a field missing here is a setting the phone cannot change.
@@ -52,6 +66,15 @@ class ChatSession:
     # set by SessionManager: chat -> the account's CLI home (raises if removed)
     resolve_account = None
     agent_prompt = None
+    # set by SessionManager: chat -> an account id to move to, or None to stay.
+    # The pool's whole decision lives behind this; a pinned chat, or a daemon
+    # with the pool off, simply always gets None back.
+    pool_pick = None
+    # set by SessionManager: chat -> the next sign-in to try, or None when
+    # there is not one. Asked *after* the turn has already been stopped, never
+    # before: it costs a subprocess, and a turn that is over its plan must not
+    # keep generating through it.
+    pool_next = None
 
     def __init__(self, chat: dict, db: DB, cfg: Config, broadcast: BroadcastFn, notify: NotifyFn):
         self.chat_id = chat["id"]
@@ -77,6 +100,11 @@ class ChatSession:
         self.dirty = False
         # transcript to hand a freshly opened CLI session, built once per provider
         self._recap: str | None = None
+        # A move the pool asked for while this turn was running: the account it
+        # goes to, and why. The turn is interrupted, and _run reads this once
+        # the interrupt has come back, rather than tearing the provider down
+        # underneath a coroutine that is still draining it.
+        self._handover: tuple[str | None, str] | None = None
 
     # ── events ─────────────────────────────────────────────────────────────
     async def emit(self, type_: str, payload: dict, persist: bool) -> None:
@@ -146,7 +174,7 @@ class ChatSession:
         provider.on_idle_output = self._on_idle_output
         return provider
 
-    def _build_recap(self, incoming: str) -> str | None:
+    def _build_recap(self, incoming: str, handover: bool = False) -> str | None:
         """The chat's recent transcript, addressed to a session that never saw it.
 
         A chat is not the CLI session behind it. Change the account or the tool
@@ -161,6 +189,11 @@ class ChatSession:
         most recent one is not this one. That is how a chat gets answered as if
         it were a different chat entirely. The event log is the only record that
         is actually this chat's, so it is the one we replay.
+
+        `handover` is the same replay for a different reason: the pool moved a
+        running turn to another sign-in. Nothing was restarted and nobody typed
+        anything new, so what follows the transcript is an instruction rather
+        than a message from the user.
         """
         last = self.db.last_seq(self.chat_id)
         if last <= 0:
@@ -196,18 +229,26 @@ class ChatSession:
             kept.append(line)
         kept.reverse()
         body = "\n".join(kept)
-        return (
+        opening = (
+            "[Remote AI Chat] This turn changed hands part-way through, so this "
+            "chat's history is not in your context. It is still on the user's "
+            "screen, and the instruction below continues it. What follows is the "
+            "tail of this chat's own transcript.\n\n"
+        ) if handover else (
             "[Remote AI Chat] Your session was restarted, so this chat's history "
             "is not in your context. It is still on the user's screen, and the "
             "message below continues it. What follows is the tail of this chat's "
             "own transcript.\n\n"
+        )
+        return (
+            opening +
             "Do not go looking for more of it on disk. Transcript folders are "
             "keyed by working folder, and other chats share this one — the "
             "recent sessions you would find there are not this conversation. If "
             "what you need is not below, say so and ask.\n\n"
             f"--- transcript, oldest first ---\n{body}\n"
             "--- end of transcript ---\n\n"
-            "The user's new message:\n\n"
+            + ("What to do now:\n\n" if handover else "The user's new message:\n\n")
         )
 
     async def reconfigure(self) -> None:
@@ -230,6 +271,109 @@ class ChatSession:
         if self.provider:
             await self.provider.close()
             self.provider = None
+
+    # ── the pool ───────────────────────────────────────────────────────────
+    async def _pool_before_turn(self, chat: dict) -> dict:
+        """Move the chat off a spent sign-in before the turn opens on it.
+
+        The cheapest place there is to switch: no session has been connected
+        yet, so nothing is thrown away. `handover` below is the same decision
+        made too late to be free — it only happens when a window fills while
+        the model is already talking.
+        """
+        if not self.pool_pick:
+            return chat
+        try:
+            account_id = await self.pool_pick(chat)
+        except Exception:
+            log.exception("the pool could not choose an account")
+            return chat
+        if not account_id or account_id == chat.get("account_id"):
+            return chat
+        return await self._rebind(chat, account_id, "limit")
+
+    async def _rebind(self, chat: dict, account_id: str, reason: str) -> dict:
+        """Point the chat at another sign-in, and say so on the timeline.
+
+        The resume id stays behind with the old account. It names a transcript
+        in that account's config dir and means nothing to any other sign-in;
+        clearing it is what makes the next turn replay the chat's own log
+        instead of waking up blank behind a long conversation.
+        """
+        was = chat.get("account_id")
+        updated = self.db.update_chat(self.chat_id, account_id=account_id,
+                                      provider_session_id=None) or chat
+        await self.emit("account.switched", {
+            "from": was, "to": account_id, "reason": reason,
+            "provider": chat.get("provider"),
+        }, True)
+        self.dirty = True
+        return updated
+
+    async def handover(self, account_id: str | None = None, reason: str = "limit") -> bool:
+        """Take the running turn off this account.
+
+        Interrupting is all that happens here, and that is the point: this is
+        called because the account has run out of plan, and until the interrupt
+        lands the model is still generating on it. `account_id` is normally
+        None — where the turn goes next is worked out in `_apply_handover`,
+        after the model has stopped, because choosing costs a subprocess and
+        nothing worth a subprocess should sit in front of the stop.
+
+        The provider is still draining the turn it has just been told to stop,
+        so it is not torn down here either; `_run` does the rest once the
+        interrupt comes back.
+
+        Nothing queued is dropped. Those messages were typed for the chat, not
+        for the sign-in, and they follow it across.
+        """
+        if self._handover is not None or not self.is_busy():
+            return False
+        self._handover = (account_id, reason)
+        if self.provider:
+            await self.provider.interrupt()
+        return True
+
+    async def _apply_handover(self) -> str | None:
+        """Rebuild the interrupted turn on the next sign-in.
+
+        Returns the prompt that carries it there — the chat's transcript, then
+        the note telling the new session what it has walked into — or None when
+        there is nowhere to carry it to and the chat has to stop.
+
+        Stopping is the right end for that case, not carrying on where it was.
+        The turn was interrupted because the account is out of plan; letting it
+        resume there would either be refused or, on a sign-in that can bill
+        past its plan, be exactly the spending the user asked us to prevent.
+        """
+        account_id, reason = self._handover
+        self._handover = None
+        chat = self.db.get_chat(self.chat_id)
+        if chat is None:
+            return None
+        if account_id is None and self.pool_next:
+            try:
+                account_id = await self.pool_next(chat)
+            except Exception:
+                log.exception("the pool could not find another account")
+                account_id = None
+        if account_id is None:
+            # Every sign-in is spent. Say so where the reader is looking, and
+            # do not leave messages queued for a chat that cannot run them.
+            async with self.lock:
+                self.queued.clear()
+            await self.emit("pool.exhausted", {
+                "account_id": chat.get("account_id"), "window": None, "until": None,
+            }, True)
+            await self._finish(last_preview="Every account is out of plan")
+            return None
+        chat = await self._rebind(chat, account_id, reason)
+        await self._rebuild()
+        self.provider = self._make_provider(chat)
+        self._recap = None
+        await self._set_status("running")
+        recap = self._build_recap(HANDOVER_NOTE, handover=True)
+        return f"{recap}{HANDOVER_NOTE}" if recap else HANDOVER_NOTE
 
     # ── turn ───────────────────────────────────────────────────────────────
     def is_busy(self) -> bool:
@@ -265,16 +409,20 @@ class ChatSession:
         chat = self.db.get_chat(self.chat_id)
         if chat is None:
             raise Err("no_chat", "no such chat")
+        if announce:
+            await self.emit("message.user", {"text": text, "attachments": attachments or []}, True)
+        # Asked before the provider exists, because the answer decides which
+        # account the provider is built for. _build_recap drops the message
+        # that was just announced from the transcript, so announcing first
+        # costs nothing and keeps the timeline in the order things happened.
+        chat = await self._pool_before_turn(chat)
         if self.dirty:
             await self._rebuild()
         if self.provider is None:
             self.provider = self._make_provider(chat)
-            # No resume id means a session with no memory of this chat. Build the
-            # recap before the new message is appended, so it is not quoted back.
+            # No resume id means a session with no memory of this chat.
             self._recap = (None if chat.get("provider_session_id")
                            else self._build_recap(text))
-        if announce:
-            await self.emit("message.user", {"text": text, "attachments": attachments or []}, True)
         if chat["title"] == NEW_CHAT_TITLE:
             self.db.update_chat(self.chat_id, title=text.strip().split("\n")[0][:60])
         await self._set_status("running", last_preview=plain(text)[:200])
@@ -304,6 +452,22 @@ class ChatSession:
         while True:
             await self._turn(text, attachments, continuation)
             continuation = False
+            if self._handover is not None:
+                # The turn was stopped, not finished. Same chat, same model,
+                # same effort — another sign-in.
+                try:
+                    text = await self._apply_handover()
+                except Exception as exc:
+                    log.exception("handover failed")
+                    self._handover = None
+                    await self.emit("turn.error",
+                                    {"message": f"could not move to another account: {exc}"}, True)
+                    await self._finish(last_preview="Error: could not change account")
+                    return
+                if text is None:
+                    return
+                attachments = None
+                continue
             async with self.lock:
                 if not self.queued:
                     # Nothing was asked, but the model may have carried on by
@@ -337,12 +501,27 @@ class ChatSession:
             res = (await self.provider.run_continuation() if continuation
                    else await self.provider.run(prompt, attachments))
         except Exception as exc:
+            if self._handover is not None:
+                # The interrupt the pool asked for, arriving as a crash. _run
+                # is about to reopen this turn on the next sign-in.
+                self.turn_started = None
+                return
             log.exception("turn crashed")
             await self.emit("turn.error", {"message": str(exc)}, True)
             await self._finish(last_preview=f"Error: {exc}"[:200])
             return
         self.last_active = time.monotonic()
         chat = self.db.get_chat(self.chat_id) or {}
+        if self._handover is not None:
+            # Stopped mid-sentence on purpose. Nothing goes idle, nothing is
+            # reported as done, and no notification is sent for work that is
+            # about to carry on somewhere else. What it spent before it was
+            # stopped still counts.
+            self.turn_started = None
+            if res.cost_usd:
+                self.db.update_chat(self.chat_id, total_cost_usd=
+                                    float(chat.get("total_cost_usd") or 0) + res.cost_usd)
+            return
         fields: dict = {}
         if res.session_id:
             fields["provider_session_id"] = res.session_id
@@ -399,10 +578,12 @@ class ChatSession:
 
 class SessionManager:
     def __init__(self, db: DB, cfg: Config, broadcast: BroadcastFn, notify: NotifyFn,
-                 resolve_account=None, agent_prompt=None):
+                 resolve_account=None, agent_prompt=None, pool_pick=None, pool_next=None):
         self.db, self.cfg, self.broadcast, self.notify = db, cfg, broadcast, notify
         self.resolve_account = resolve_account
         self.agent_prompt = agent_prompt
+        self.pool_pick = pool_pick
+        self.pool_next = pool_next
         self.sessions: dict[str, ChatSession] = {}
 
     def get(self, chat_id: str) -> ChatSession:
@@ -414,6 +595,8 @@ class SessionManager:
             s = ChatSession(chat, self.db, self.cfg, self.broadcast, self.notify)
             s.resolve_account = self.resolve_account
             s.agent_prompt = self.agent_prompt
+            s.pool_pick = self.pool_pick
+            s.pool_next = self.pool_next
             self.sessions[chat_id] = s
         return s
 

@@ -350,7 +350,30 @@ export function TurnFooter({ cost, duration, error, usage, stopReason }: { cost?
   return <Text style={[type.monoSmall, { color: colors.faint }]}>{parts.join(' · ')}</Text>;
 }
 
+/** The pool moved this chat onto another sign-in, mid-answer or between turns.
+ *
+ *  Worth a line of its own rather than a footnote: the session that answers
+ *  after it is not the session that answered before, and it was handed a
+ *  summary of the chat rather than the chat. When there was nowhere to move
+ *  to, the same line says that instead — the turn is about to run into a real
+ *  limit and the reader should not have to guess why. */
+export function SwitchNote({ to, until, label }: { to?: string | null; until?: number | null; label?: string }) {
+  const T = useT();
+  const back = until ? new Date(until * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+  const text = to
+    ? T('poolSwitched', { account: label || to })
+    : back ? T('poolExhaustedUntil', { time: back }) : T('poolExhausted');
+  return (
+    <View style={styles.switchNote}>
+      <Text style={[type.caption, { color: colors.muted, flex: 1 }]}>{text}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  switchNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 24,
+                paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.md,
+                backgroundColor: colors.surface },
   assistant: { paddingRight: 24 },
   userBubble: { maxWidth: 290, backgroundColor: colors.userBubble, borderRadius: 18, borderBottomRightRadius: 4, paddingHorizontal: 14, paddingVertical: 10 },
   groupHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 12,

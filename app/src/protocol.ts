@@ -25,6 +25,10 @@ export interface Chat {
   created_at: number;
   updated_at: number;
   session_ids?: string;
+  /** 1 to keep this chat on the sign-in named above even while the account
+   *  pool is on. Off by default: the pool is a mode, and a chat is in it
+   *  unless somebody says otherwise. */
+  pool_pinned?: number;
 }
 
 export interface Group { id: string; name: string; sort: number; created_at: number }
@@ -145,6 +149,57 @@ export interface LimitWindow {
   /** When the computer heard this. The tool only measures during a turn, so a
    *  reading can be an hour old and still be the newest one there is. */
   at?: number;
+}
+
+/** How the computer drives several sign-ins of one tool as one. */
+export interface PoolSettings {
+  enabled: boolean;
+  /** The share of a window at which a chat is handed over, for any window
+   *  `thresholds` does not name. Deliberately short of 1 so the move happens
+   *  before the turn dies. */
+  threshold: number;
+  /** Per window, because the windows are not alike: the five-hour one refills
+   *  several times a day, a weekly one is most of a working week. */
+  thresholds: Record<string, number>;
+  /** The default for a sign-in that has not been given an answer of its own.
+   *  'account' leaves a sign-in with pay-as-you-go on in play past its plan;
+   *  'never' treats the plan's limit as the limit whatever billing allows. */
+  use_overage: 'account' | 'never';
+  /** Per sign-in, overriding the default above. One account spending past its
+   *  plan while another never touches it is the ordinary case. */
+  overage_by_account: Record<string, 'account' | 'never'>;
+  /** The reading-to-reading step to assume before a real one has been
+   *  measured. The margin is always at least this wide on a sign-in that must
+   *  not spend past its plan; once the computer has watched the account long
+   *  enough, a wider measured step takes over. */
+  reserve: number;
+  /** provider -> account ids, in the order they are tried. */
+  order: Record<string, string[]>;
+  max_hops: number;
+}
+
+/** Where one sign-in stands under the pool. */
+export interface PoolAccount {
+  account_id: string;
+  provider: Provider;
+  label: string;
+  blocked: boolean;
+  /** The window that blocked it, and when it comes back. */
+  window: string | null;
+  until: number | null;
+  utilization: number | null;
+  /** The plan is spent and pay-as-you-go is carrying the account. */
+  on_overage: boolean;
+  /** The tool says paid extra usage is covering sends right now. */
+  spending: boolean;
+  /** The widest jump seen between two readings of one window here, and the
+   *  margin actually held back below the threshold because of it. */
+  step: number | null;
+  margin: number;
+  /** This sign-in is not allowed to spend past its plan. */
+  strict: boolean;
+  /** Nothing has ever been measured for this sign-in. */
+  unknown: boolean;
 }
 
 /** A limits report: every window the tool measured this turn. The window named

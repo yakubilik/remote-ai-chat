@@ -15,7 +15,7 @@ import { getOpenChat, setChatOnScreen, setOpenChat } from '../../src/push';
 import { LimitsRing } from '../../src/components/limits';
 import { colors, type, mono, providerColor } from '../../src/theme';
 import { Back, ChevronDown, SkeletonBubbles, Spinner } from '../../src/components/ui';
-import { ApprovalCard, AssistantText, ConnectionBanner, ToolCard, ToolGroup, TurnFooter, UserBubble, WorkingRow } from '../../src/components/chat';
+import { ApprovalCard, AssistantText, ConnectionBanner, SwitchNote, ToolCard, ToolGroup, TurnFooter, UserBubble, WorkingRow } from '../../src/components/chat';
 
 const Icon = ({ d, size = 20, color = colors.text, sw = 2.2 }: { d: string; size?: number; color?: string; sw?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><Path d={d} /></Svg>
@@ -358,9 +358,11 @@ export default function ChatScreen() {
       );
       case 'done': return <TurnFooter cost={item.data.cost_usd} duration={item.data.duration_ms} usage={item.data.usage} stopReason={item.data.stop_reason} />;
       case 'error': return <TurnFooter error={item.data.message} />;
+      case 'switch': return <SwitchNote to={item.data.to} until={item.data.until}
+                              label={accounts.find((a) => a.id === item.data.to)?.label} />;
       default: return null;
     }
-  }, [id, respond, T]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, respond, T, accounts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.bg }}>
