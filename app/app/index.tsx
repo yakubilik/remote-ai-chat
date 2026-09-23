@@ -8,5 +8,5 @@ export default function Index() {
   const ready = useStore((s) => s.ready);
   const host = useStore((s) => s.host);
   if (!ready) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
-  return <Redirect href={host ? '/chats' : '/pair'} />;
+  return <Redirect href={host ? '/chats' : '/welcome'} />;
 }

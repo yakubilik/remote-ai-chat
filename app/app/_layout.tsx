@@ -56,6 +56,7 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg }, animation: 'default' }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="welcome" />
         <Stack.Screen name="pair" />
         <Stack.Screen name="chats" />
         <Stack.Screen name="chat/[id]" />
