@@ -1,0 +1,7 @@
+{
+  "name": "drop-target",
+  "version": "1.0.0",
+  "description": "A view that accepts files dragged in from another app (iOS).",
+  "main": "index.ts",
+  "private": true
+}

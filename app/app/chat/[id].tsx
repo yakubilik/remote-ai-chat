@@ -11,6 +11,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { buildTimeline, fileUrl, useStore, useT, type Attachment, type TimelineItem } from '../../src/store';
 import type { CliAccount } from '../../src/protocol';
 import { useNavGuard } from '../../src/nav';
+import { useFileDrop, type DroppedFile } from '../../modules/drop-target';
 import { getOpenChat, setChatOnScreen, setOpenChat } from '../../src/push';
 import { LimitsRing } from '../../src/components/limits';
 import { colors, type, mono, providerColor } from '../../src/theme';
@@ -125,6 +126,8 @@ export default function ChatScreen() {
   const [pending, setPending] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [onScreen, setOnScreen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [kbVisible, setKbVisible] = useState(false);
   const listRef = useRef<FlatList>(null);
@@ -157,7 +160,8 @@ export default function ChatScreen() {
   useFocusEffect(useCallback(() => {
     setChatOnScreen(id!);
     setOpenChat(id!);
-    return () => setChatOnScreen(null);
+    setOnScreen(true);
+    return () => { setChatOnScreen(null); setOnScreen(false); };
   }, [id]));
   // Blur is not "left the chat" — a sheet blurs it too, and so does backgrounding
   // the app, which is exactly when a notification tap has to know where we are.
@@ -241,6 +245,21 @@ export default function ChatScreen() {
     if (!r.canceled) await addAssets(r.assets);
   };
   const pickFile = async () => { const r = await DocumentPicker.getDocumentAsync({ multiple: false, copyToCacheDirectory: true }); if (!r.canceled) await addAssets(r.assets.map((a) => ({ uri: a.uri, fileName: a.name }))); };
+  /** Dragged in from another app — a screenshot out of Photos, a PDF out of
+   *  Files. iOS has already copied it somewhere we can read, so it joins the
+   *  queue the picker fills: uploaded now, sent when the message is. Only
+   *  while this chat is the one on screen; a drop belongs to what you are
+   *  looking at. */
+  const onDropped = useCallback((files: DroppedFile[]) => {
+    setDropping(false);
+    if (!files.length) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    void addAssets(files.map((f) => ({ uri: f.uri, fileName: f.name })));
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onDragEnter = useCallback(() => setDropping(true), []);
+  const onDragExit = useCallback(() => setDropping(false), []);
+  useFileDrop(onScreen, { onDrop: onDropped, onEnter: onDragEnter, onExit: onDragExit });
+
   const attachActions = [
     { key: 'photos', label: T('photos'), icon: I.photos, run: pickPhotos },
     { key: 'camera', label: T('camera'), icon: I.camera, run: takePhoto },
@@ -528,6 +547,17 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* What is about to happen if the finger lets go. Drawn over everything
+          and touchable by nothing: a drag in flight belongs to the system. */}
+      {dropping && (
+        <View pointerEvents="none" style={styles.dropVeil}>
+          <View style={styles.dropCard}>
+            <Icon d={I.up} size={22} color={colors.accent} />
+            <Text style={[type.sub, { color: colors.text }]}>{T('dropHere')}</Text>
+          </View>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -536,6 +566,14 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingBottom: 8 },
   iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   modelChip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 14, borderRadius: 19, backgroundColor: colors.surface2, maxWidth: 220 },
+  dropVeil: {
+    ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(15,14,12,0.55)',
+  },
+  dropCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, height: 52,
+    borderRadius: 26, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.accent,
+  },
   pill: { gap: 2, padding: 6, borderRadius: 26, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   pillRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   input: { alignSelf: 'stretch', minHeight: 36, maxHeight: 160, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6, color: colors.text, fontSize: 17, lineHeight: 22 },

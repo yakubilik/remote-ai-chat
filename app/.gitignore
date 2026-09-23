@@ -1,8 +1,10 @@
 node_modules/
 .expo/
 dist/
-ios/
-android/
+# Anchored: these are the prebuild output at the app root, not every folder
+# that happens to be called ios or android — a native module keeps its own.
+/ios/
+/android/
 *.log
 .DS_Store
 identity.local.json
