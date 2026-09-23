@@ -5,3 +5,4 @@ ios/
 android/
 *.log
 .DS_Store
+identity.local.json
