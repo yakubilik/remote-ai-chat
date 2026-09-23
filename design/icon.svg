@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A1815"/>
+      <stop offset="1" stop-color="#0B0A09"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- speech bubble, clay -->
+  <path fill="#C2522D" d="
+    M 312 196
+    H 712
+    a 140 140 0 0 1 140 140
+    V 592
+    a 140 140 0 0 1 -140 140
+    H 470
+    l -150 116
+    a 18 18 0 0 1 -29 -14
+    V 732
+    H 312
+    a 140 140 0 0 1 -140 -140
+    V 336
+    a 140 140 0 0 1 140 -140
+    Z"/>
+  <!-- prompt chevron -->
+  <path d="M 396 380 L 482 464 L 396 548" fill="none" stroke="#0F0E0C" stroke-width="58"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- block cursor -->
+  <rect x="552" y="386" width="96" height="156" rx="14" fill="#0F0E0C"/>
+</svg>
