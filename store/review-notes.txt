@@ -1,0 +1,35 @@
+Remote AI Chat is a client for an open-source daemon that the user installs on
+their own computer. There is no backend of ours and no account system. The app
+connects over the user's own network to that daemon, which drives a
+command-line coding agent the user has already installed and signed into.
+
+Because of that, the app cannot be exercised without a computer running the
+daemon. To make the review possible we have prepared:
+
+1. A screen recording of the whole flow — pairing by QR code, starting a chat
+   in a folder, an answer streaming in, a shell command held for approval,
+   approving it, and a voice message being transcribed:
+
+   <VIDEO URL>
+
+2. A demo daemon we can bring online at a public address for the duration of
+   the review, with a pairing link you can open on the test device. Please ask
+   for it in Resolution Center and we will reply the same day.
+
+Notes on specific items:
+
+- Camera: used once, to scan the pairing QR code the daemon prints. Nothing is
+  photographed or stored.
+- Local network: the app connects directly to the user's own computer by IP
+  address. It contacts no other host.
+- App Transport Security: the connection is a WebSocket to a private address on
+  the user's own network. There is no public hostname, so there is no
+  certificate to obtain; the traffic never leaves the user's network, which on
+  a tailnet is already encrypted at the network layer.
+- Face ID: optional, for locking the app and for confirming a destructive
+  command.
+- The app collects no data at all — no analytics SDK, no crash reporting, no
+  identifiers, and no server of ours to send them to.
+
+Source code, daemon install instructions and the full wire protocol are public:
+https://github.com/yakubilik/remote-ai-chat
