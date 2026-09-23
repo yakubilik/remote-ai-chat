@@ -24,6 +24,12 @@ function connError(key: 'wsNotConnected' | 'wsDropped' | 'wsTimeout'): Error & {
 
 export type ConnStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'unauthorized';
 
+/** How often to prove the socket is still there, and how long to wait for the
+ *  proof. Short enough that a dead connection is noticed within a turn, long
+ *  enough to ride out a burst of streamed text. */
+const HEARTBEAT_MS = 15000;
+const HEARTBEAT_TIMEOUT_MS = 10000;
+
 export class RacClient {
   private ws: WebSocket | null = null;
   private rid = 0;
@@ -34,6 +40,8 @@ export class RacClient {
   private retry = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private wanted = false;
+  private hb: ReturnType<typeof setInterval> | null = null;
+  private beating = false;
   status: ConnStatus = 'idle';
 
   connect(host: string, port: number, token: string) {
@@ -51,6 +59,7 @@ export class RacClient {
   private closeSocket() {
     const old = this.ws;
     this.ws = null;
+    this.stopHeartbeat();
     if (old) { try { old.onclose = null; old.onmessage = null; old.close(); } catch {} }
   }
 
@@ -73,12 +82,13 @@ export class RacClient {
       return;
     }
     this.ws = ws;
-    ws.onopen = () => { this.retry = 0; this.setStatus('online'); };
+    ws.onopen = () => { this.retry = 0; this.setStatus('online'); this.startHeartbeat(); };
     ws.onmessage = (m) => this.handle(String(m.data));
     ws.onerror = () => {};
     ws.onclose = (e) => {
       if (this.ws !== ws) return;
       this.ws = null;
+      this.stopHeartbeat();
       for (const p of this.pending.values()) p.reject(connError('wsDropped'));
       this.pending.clear();
       if (e.code === 4401 || e.code === 1008) { this.setStatus('unauthorized'); this.wanted = false; return; }
@@ -93,9 +103,57 @@ export class RacClient {
     this.timer = setTimeout(() => this.open(), delay);
   }
 
-  /** Force an immediate reconnect attempt (e.g. app came to foreground). */
+  /** A socket can die without the browser being told: the daemon restarted, the
+   *  laptop slept, the Wi-Fi handed over, a NAT dropped an idle flow. The tab
+   *  goes on reporting readyState OPEN, so events simply stop arriving and
+   *  nothing reconnects — the turn on screen looks like it stopped halfway,
+   *  and the only way to find out it did not is to send something and watch it
+   *  time out. A round trip we control is the only way to tell a quiet
+   *  connection from a dead one. */
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.hb = setInterval(() => { void this.beat(); }, HEARTBEAT_MS);
+  }
+
+  private stopHeartbeat() {
+    if (this.hb) { clearInterval(this.hb); this.hb = null; }
+  }
+
+  private async beat(): Promise<boolean> {
+    if (this.beating) return true;
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    this.beating = true;
+    try {
+      await this.request('ping', {}, HEARTBEAT_TIMEOUT_MS);
+      return true;
+    } catch {
+      // Same socket, and it did not answer: it is gone whatever the tab says.
+      if (this.ws === ws) this.dropDead();
+      return false;
+    } finally {
+      this.beating = false;
+    }
+  }
+
+  /** Bury a socket the browser still believes in, and start reconnecting now. */
+  private dropDead() {
+    console.warn('ws: no answer to heartbeat, reconnecting');
+    this.closeSocket();
+    for (const p of this.pending.values()) p.reject(connError('wsDropped'));
+    this.pending.clear();
+    this.setStatus('offline');
+    if (this.timer) clearTimeout(this.timer);
+    this.retry = 0;
+    this.open();
+  }
+
+  /** Force an immediate reconnect attempt (e.g. the tab came back to the front). */
   poke() {
-    if (!this.wanted || this.status === 'online' || this.status === 'connecting') return;
+    if (!this.wanted || this.status === 'connecting') return;
+    // A tab coming back from the background is precisely when "online" is most
+    // likely to be a stale belief, so check it instead of trusting it.
+    if (this.status === 'online') { void this.beat(); return; }
     if (this.timer) clearTimeout(this.timer);
     this.retry = 0;
     this.open();
@@ -138,16 +196,28 @@ export class RacClient {
 
   async call<T = any>(type: string, data: Record<string, any> = {}): Promise<T> {
     await this.ready();
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw connError('wsNotConnected');
-    }
+    return this.request<T>(type, data);
+  }
+
+  /** One request on the socket as it stands — no waiting for a reconnect. The
+   *  heartbeat needs this: asking ready() to heal the connection first would
+   *  defeat the point of asking whether it is healthy. */
+  private request<T = any>(type: string, data: Record<string, any> = {}, timeoutMs = 30000): Promise<T> {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.reject(connError('wsNotConnected'));
     const id = ++this.rid;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.ws!.send(JSON.stringify({ id, type, data }));
+      try {
+        ws.send(JSON.stringify({ id, type, data }));
+      } catch {
+        this.pending.delete(id);
+        reject(connError('wsNotConnected'));
+        return;
+      }
       setTimeout(() => {
         if (this.pending.has(id)) { this.pending.delete(id); reject(connError('wsTimeout')); }
-      }, 30000);
+      }, timeoutMs);
     });
   }
 

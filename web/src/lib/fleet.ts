@@ -300,7 +300,7 @@ function attach(cfg: HostConfig, set: Setter, get: () => FleetState) {
           ...slot, info: r.host ?? slot.info, catalog: r.catalog ?? slot.catalog,
         })))
         .then(() => get().refresh(key))
-        .catch(() => {});
+        .catch((e) => console.warn('rac: greeting', key, 'failed', e));
     }
   });
 
@@ -353,6 +353,13 @@ function reduce(slot: HostSlot, ev: RacEvent): HostSlot {
 
 export function clientFor(key: string): RacClient | undefined {
   return clients.get(key);
+}
+
+/** Check every computer now, rather than at the next heartbeat. What the tab
+ *  was doing while it was in the background is exactly what kills a socket
+ *  quietly, so coming back to the front is the moment to ask. */
+export function pokeAll(): void {
+  for (const c of clients.values()) c.poke();
 }
 
 /** Everything that is running, anywhere, newest first — the one question the

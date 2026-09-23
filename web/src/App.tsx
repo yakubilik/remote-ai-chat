@@ -13,7 +13,7 @@ import { Projects } from './screens/Projects';
 import { Agents } from './screens/Agents';
 import { Settings } from './screens/Settings';
 import { Onboarding } from './screens/Onboarding';
-import { useFleet, onAnyEvent } from './lib/fleet';
+import { useFleet, onAnyEvent, pokeAll } from './lib/fleet';
 import { useLogs, logKey, emptyLog } from './lib/timeline';
 import { deleteChat, interrupt, respond, send, updateChat, upload } from './lib/actions';
 import type { Chat } from './lib/protocol';
@@ -62,6 +62,30 @@ export function App() {
     if (fleet.focus !== hostKey) fleet.setFocus(hostKey);
     logs.open(hostKey, chatId);
   }, [fleet.focus]);
+
+  // The chat on screen catches itself up the moment its computer answers
+  // again. Without this a panel that was asleep, or whose socket died quietly
+  // under a long turn, goes on drawing the timeline it had when the connection
+  // went — and every event it missed is a hole no later event fills, because
+  // the live feed only ever appends.
+  const selStatus = sel ? (fleet.hosts[sel.hostKey]?.status ?? null) : null;
+  useEffect(() => {
+    if (!sel || selStatus !== 'online') return;
+    void useLogs.getState().open(sel.hostKey, sel.chatId);
+  }, [sel?.hostKey, sel?.chatId, selStatus]);
+
+  // A tab in the background is where sockets go to die unnoticed.
+  useEffect(() => {
+    const wake = () => { if (!document.hidden) pokeAll(); };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
+    window.addEventListener('online', wake);
+    return () => {
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('focus', wake);
+      window.removeEventListener('online', wake);
+    };
+  }, []);
 
   // Live token count belongs to the turn that is running, not to the chat, so
   // it is dropped the moment that turn ends rather than lingering as a total.

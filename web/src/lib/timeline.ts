@@ -32,9 +32,26 @@ export interface ChatLog {
   pending: string[];
   loading: boolean;
   error: string | null;
+  /** there is older history above the first item — the chat was opened at its tail */
+  truncated: boolean;
 }
 
-const EMPTY: ChatLog = { items: [], seq: 0, busy: false, pending: [], loading: false, error: null };
+const EMPTY: ChatLog = { items: [], seq: 0, busy: false, pending: [], loading: false, error: null, truncated: false };
+
+/** A chat.get in flight, per chat. Two callers asking at once both read the
+ *  same since_seq, and the slower answer overwrites the fuller one; sharing
+ *  the request means they cannot disagree about where the chat ends. */
+const inFlight = new Map<string, Promise<void>>();
+
+/** Events that arrived while a chat.get was in the air. They are folded in
+ *  after the answer lands rather than before it, so the rebuild cannot throw
+ *  away a turn that ended during the load. */
+const held = new Map<string, RacEvent[]>();
+
+/** How many pages of 500 a reconnect will walk before giving up and taking
+ *  the tail instead. Ten is an afternoon of events; past that the missed part
+ *  is history, not context. */
+const MAX_PAGES = 10;
 
 export function logKey(hostKey: string, chatId: string): string {
   return `${hostKey}/${chatId}`;
@@ -174,37 +191,80 @@ export const useLogs = create<LogState>((set, get) => ({
 
   open: async (hostKey, chatId) => {
     const k = logKey(hostKey, chatId);
+    const running = inFlight.get(k);
+    if (running) return running;
     const c = clientFor(hostKey);
     if (!c) return;
-    const have = get().logs[k];
-    set((s) => ({ logs: { ...s.logs, [k]: { ...(have ?? EMPTY), loading: true, error: null } } }));
-    try {
-      const r: any = await c.call('chat.get', { chat_id: chatId, since_seq: have?.seq ?? 0 });
-      const evs: RacEvent[] = r.events ?? [];
-      let items = have && have.seq > 0 ? have.items : [];
-      let seq = have?.seq ?? 0;
-      for (const ev of evs) {
-        items = apply(items, ev);
-        if (ev.seq != null && ev.seq > seq) seq = ev.seq;
+
+    const run = (async () => {
+      const have = get().logs[k];
+      set((s) => ({ logs: { ...s.logs, [k]: { ...(have ?? EMPTY), loading: true, error: null } } }));
+      held.set(k, []);
+      try {
+        // Where the chat is picked up. A cold open is answered from the tail
+        // (the daemon's doing); a reconnect asks forward from the last seq
+        // already folded in, and keeps asking while the daemon says there is
+        // more — one page short of caught up leaves a hole that never closes.
+        let since = have?.seq ?? 0;
+        let items = since > 0 ? (have?.items ?? []) : [];
+        let seq = since;
+        let truncated = since > 0 ? !!have?.truncated : false;
+        let last: any = null;
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const r: any = await c.call('chat.get', { chat_id: chatId, since_seq: since });
+          last = r;
+          for (const ev of (r.events ?? []) as RacEvent[]) {
+            if (ev.seq != null && ev.seq <= seq) continue;
+            items = apply(items, ev);
+            if (ev.seq != null) seq = ev.seq;
+          }
+          if (r.truncated) truncated = true;
+          if (!r.more) break;
+          if (seq <= since) break;                    // no progress; stop rather than spin
+          since = seq;
+        }
+        // Anything that streamed in while the pages were in the air. A turn
+        // that ended in that window has to move `busy` too, or the answer's
+        // snapshot of it — taken before the event — leaves the chat "running".
+        let busy = !!last?.busy;
+        for (const ev of held.get(k) ?? []) {
+          if (ev.event === 'turn.started') busy = true;
+          else if (ev.event === 'turn.done' || ev.event === 'turn.error') busy = false;
+          if (ev.seq != null && ev.seq <= seq) continue;
+          items = apply(items, ev);
+          if (ev.seq != null) seq = ev.seq;
+        }
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [k]: {
+              items, seq, truncated, busy,
+              pending: last?.pending_approvals ?? [],
+              loading: false, error: null,
+            },
+          },
+        }));
+      } catch (e: any) {
+        set((s) => ({
+          logs: { ...s.logs, [k]: { ...(s.logs[k] ?? EMPTY), loading: false, error: e?.message ?? 'Could not load the chat' } },
+        }));
+      } finally {
+        held.delete(k);
       }
-      set((s) => ({
-        logs: {
-          ...s.logs,
-          [k]: { items, seq, busy: !!r.busy, pending: r.pending_approvals ?? [], loading: false, error: null },
-        },
-      }));
-    } catch (e: any) {
-      set((s) => ({
-        logs: { ...s.logs, [k]: { ...(s.logs[k] ?? EMPTY), loading: false, error: e?.message ?? 'Could not load the chat' } },
-      }));
-    }
+    })();
+
+    inFlight.set(k, run);
+    try { await run; } finally { inFlight.delete(k); }
   },
 
   feed: (hostKey, ev) => {
     if (!ev.chat_id) return;
     const k = logKey(hostKey, ev.chat_id);
+    const waiting = held.get(k);
+    if (waiting) { waiting.push(ev); return; }   // a load is in the air; fold it in after
     const cur = get().logs[k];
     if (!cur) return;                     // not open anywhere; chat.get will catch it up
+    if (ev.seq != null && ev.seq <= cur.seq) return;   // already folded in
     const items = apply(cur.items, ev);
     const seq = ev.seq != null && ev.seq > cur.seq ? ev.seq : cur.seq;
     const busy = ev.event === 'turn.started' ? true

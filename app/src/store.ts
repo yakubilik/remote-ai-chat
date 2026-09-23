@@ -340,10 +340,21 @@ export const useStore = create<State>((set, get) => {
         return;
     }
     if (ev.seq != null) {
-      const list = s.events[cid] || [];
-      const last = list.length ? list[list.length - 1].seq! : 0;
-      if (ev.seq <= last) return;
-      const patch: Partial<State> = { events: { ...s.events, [cid]: [...list, ev] } };
+      // Only a chat this phone has actually loaded keeps its events. A chat
+      // nobody has opened has no history here, just whatever happened to
+      // stream past while it was on another screen — and appending to that
+      // builds a timeline that starts in the middle. openChat then asks for
+      // everything *after* that fragment, so the chat opens as a fragment for
+      // good, which is the phone showing an afternoon-old conversation while
+      // the panel shows the real one. chat.get is what fills a chat in.
+      const known = s.loadedChats[cid] || inFlightOpen.has(cid);
+      const patch: Partial<State> = {};
+      if (known) {
+        const list = s.events[cid] || [];
+        const last = list.length ? list[list.length - 1].seq! : 0;
+        if (ev.seq <= last) return;
+        patch.events = { ...s.events, [cid]: [...list, ev] };
+      }
       if (ev.event === 'message.assistant') {
         const cur = s.live[cid];
         // Hand the authoritative text to the live item and mark it final; the chat
@@ -583,20 +594,40 @@ export const useStore = create<State>((set, get) => {
       const running = inFlightOpen.get(id);
       if (running) return running;
       const run = (async () => {
-        const list = get().events[id] || [];
-        const since = list.length ? list[list.length - 1].seq! : 0;
-        const r = await client.call('chat.get', { chat_id: id, since_seq: since });
+        const list = get().loadedChats[id] ? (get().events[id] || []) : [];
+        let since = list.length ? list[list.length - 1].seq! : 0;
+        // A cold open is answered from the end of the chat; a reconnect asks
+        // forward from where this phone left off, and keeps asking while the
+        // computer says there is more. Stopping at the first page would leave
+        // a hole that every later event is appended after, and nothing ever
+        // goes back for it.
+        let chat: any = null;
+        let busy = false;
+        let events: RacEvent[] = [];
+        for (let page = 0; page < 10; page++) {
+          const r = await client.call('chat.get', { chat_id: id, since_seq: since });
+          chat = r.chat;
+          busy = !!r.busy;
+          const page_events = (r.events as RacEvent[]).filter((e) => (e.seq ?? 0) > since);
+          events = [...events, ...page_events];
+          if (!r.more || !page_events.length) break;
+          since = page_events[page_events.length - 1].seq!;
+        }
         // Re-read rather than close over `list`: events that streamed in while
         // the request was in the air are already in the store, and dropping
-        // back to the old array would throw them away.
+        // back to the old array would throw them away. On a cold open only
+        // the ones past the answer are kept — anything earlier would be a
+        // fragment sitting in front of the history that was just fetched.
+        const answered = events.length ? (events[events.length - 1].seq ?? 0) : 0;
         const now = get().events[id] || [];
-        const known = since ? now : [];
-        const lastSeq = known.length ? known[known.length - 1].seq! : 0;
-        const fresh = (r.events as RacEvent[]).filter((e) => (e.seq ?? 0) > lastSeq);
+        const keep = list.length ? now : now.filter((e) => (e.seq ?? 0) > answered);
+        const seen = new Set(keep.map((e) => e.seq));
+        const merged = [...keep, ...events.filter((e) => !seen.has(e.seq))]
+          .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
         set({
-          chats: { ...get().chats, [id]: r.chat },
-          events: { ...get().events, [id]: [...known, ...fresh] },
-          busy: { ...get().busy, [id]: !!r.busy },
+          chats: { ...get().chats, [id]: chat },
+          events: { ...get().events, [id]: merged },
+          busy: { ...get().busy, [id]: busy },
           loadedChats: { ...get().loadedChats, [id]: true },
         });
       })();
