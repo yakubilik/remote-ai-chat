@@ -192,8 +192,36 @@ class DB:
             "SELECT * FROM events WHERE chat_id=? AND seq>? ORDER BY seq LIMIT ?",
             (chat_id, since_seq, limit),
         ).fetchall()
-        return [{"seq": r["seq"], "chat_id": r["chat_id"], "event": r["type"],
-                 "data": json.loads(r["payload"]), "ts": r["ts"]} for r in rows]
+        return [self._event_row(r) for r in rows]
+
+    def recent_events(self, chat_id: str, limit: int = 500) -> list[dict]:
+        """The last `limit` events of a chat, oldest first.
+
+        `events()` walks forward from a sequence number, which is what a client
+        catching up after a reconnect wants. A client opening a chat for the
+        first time wants the opposite end: a chat with three thousand events
+        answered from the front is answered with its first afternoon, and every
+        word said since is missing until the client asks two thousand five
+        hundred more times.
+        """
+        rows = self._c.execute(
+            "SELECT * FROM (SELECT * FROM events WHERE chat_id=? ORDER BY seq DESC LIMIT ?)"
+            " ORDER BY seq",
+            (chat_id, limit),
+        ).fetchall()
+        return [self._event_row(r) for r in rows]
+
+    def count_events(self, chat_id: str, since_seq: int = 0) -> int:
+        row = self._c.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE chat_id=? AND seq>?",
+            (chat_id, since_seq),
+        ).fetchone()
+        return int(row["n"]) if row else 0
+
+    @staticmethod
+    def _event_row(r) -> dict:
+        return {"seq": r["seq"], "chat_id": r["chat_id"], "event": r["type"],
+                "data": json.loads(r["payload"]), "ts": r["ts"]}
 
     def tail_events(self, chat_id: str, types: tuple[str, ...], limit: int = 12) -> list[dict]:
         """The newest events of a few kinds, newest first.

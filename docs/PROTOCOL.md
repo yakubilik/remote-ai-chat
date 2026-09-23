@@ -23,11 +23,19 @@ Event (daemon → client, unasked):
 ones. After a reconnect, `chat.get {since_seq}` replays the durable events that
 were missed.
 
+Every connected client has a queue of its own on the daemon side, and a writer
+that drains it. A client that stops accepting — a phone in a pocket, a laptop
+that slept — is closed once it falls a thousand events behind or takes twenty
+seconds over one message, rather than waited for: a turn awaits the events it
+emits, so waiting on one dead socket used to stop the turn itself, and every
+other device watching it.
+
 ## Requests
 
 | type | data | returns |
 |---|---|---|
 | `hello` | `{device_name?, push_token?}` | `{host, catalog, device}` |
+| `ping` | – | `{ts}` — the client's heartbeat. A socket can die without either end being told (the computer slept, a NAT dropped an idle flow) and the client goes on reporting it open while the turn it is watching silently stops arriving. Both clients ask every 15 s and give up on the socket after 10 s of silence |
 | `host.info` | – | host information |
 | `host.models` | – | `{claude: {models, efforts, perm_modes}, codex: {...}}` |
 | `host.projects` | – | `{projects: [{path,name,is_git}], roots}` |
@@ -37,7 +45,7 @@ were missed.
 | `group.list` / `group.create {name}` / `group.rename {group_id,name}` / `group.delete {group_id}` | | |
 | `chat.list` | `{include_archived?}` | `{chats, groups}` |
 | `chat.create` | `{provider, model?, effort?, perm_mode?, cwd?, group_id?, title?, max_turns?, max_budget_usd?, pool_pinned?}` | chat |
-| `chat.get` | `{chat_id, since_seq?, limit?}` | `{chat, events, pending_approvals, busy}` — `events` are shaped like the envelope's events (`{event, chat_id, seq, data, ts}`) |
+| `chat.get` | `{chat_id, since_seq?, limit?}` | `{chat, events, pending_approvals, busy, more, truncated}` — `events` are shaped like the envelope's events (`{event, chat_id, seq, data, ts}`). At most `limit` (500) at a time, and **which end** depends on the ask: `since_seq: 0` is a cold open and is answered from the *tail*, with `truncated: true` when there is older history above it; a `since_seq` is a catch-up and is answered forward, with `more: true` while events remain. A client that stops on `more` leaves a hole in its own timeline — the live feed only ever appends — so it asks again from the last seq it got until `more` is false |
 | `chat.update` | `{chat_id, ...fields}` | chat (changing model/perm/cwd rebuilds the provider; the resume id survives) |
 | `chat.delete` | `{chat_id}` | – |
 | `chat.send` | `{chat_id, text, attachments?: [{path}]}` | `{accepted, queued}` — if a turn is running the message is queued (`queued: true`) and runs in order once the turn ends; `chat.interrupt` empties the queue. A full queue (20) returns `error: busy` |

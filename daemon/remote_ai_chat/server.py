@@ -38,6 +38,20 @@ log = logging.getLogger("rac.server")
 
 PUSH_TEXT = {"approval": "Approval pending", "done": "Task finished"}
 
+# How far a client may fall behind before it is cut loose, and how long one
+# write may take before the socket counts as gone.
+#
+# A phone in a pocket, a laptop that slept, a NAT that dropped an idle flow:
+# the socket still reads OPEN on both ends and a write into it blocks until the
+# OS gives up, which is minutes. Broadcasting straight onto the sockets meant
+# one such client stopped the whole house — every other device stopped
+# receiving, and because the turn itself awaits its own events, the running
+# turn stopped with it. That is the stream that "cuts off" in the middle of a
+# long turn. So every client gets a queue and a writer of its own, and a client
+# that cannot keep up is closed rather than waited for: it reconnects and asks
+# for what it missed, which is a round trip, not a dead chat.
+OUTBOX_MAX = 1024
+SEND_TIMEOUT_S = 20.0
 
 # ── git status (for the panel) ───────────────────────────────────────────────
 # The panel's project grid shows a branch, a dirty count and a last commit for
@@ -104,6 +118,9 @@ class Server:
                                        pool_pick=self._pool_pick,
                                        pool_next=self._pool_next_for)
         self.clients: dict[WebSocket, Device] = {}
+        # One queue per connected client, drained by that client's own writer.
+        self.outbox: dict[WebSocket, asyncio.Queue[str]] = {}
+        self.writers: dict[WebSocket, asyncio.Task] = {}
         self.accounts: dict[str, acct.Account] = {}
         self.logins: dict[str, acct.LoginSession] = {}
         self._installing: str | None = None
@@ -172,13 +189,10 @@ class Server:
             return {"provider": provider, "version": tools.version(provider), "already": True}
 
         async def out(line: str) -> None:
-            try:
-                await ws.send_text(json.dumps({"type": "event", "event": "tool.install.output",
-                                               "chat_id": None, "seq": None,
-                                               "data": {"provider": provider, "line": line},
-                                               "ts": time.time()}, ensure_ascii=False))
-            except Exception:
-                pass
+            await self.send_to(ws, {"type": "event", "event": "tool.install.output",
+                                    "chat_id": None, "seq": None,
+                                    "data": {"provider": provider, "line": line},
+                                    "ts": time.time()})
 
         self._installing = provider
         try:
@@ -474,14 +488,68 @@ class Server:
         msg = json.dumps({"type": "event", "event": event["event"], "chat_id": event.get("chat_id"),
                           "seq": event.get("seq"), "data": event.get("data"), "ts": event.get("ts")},
                          ensure_ascii=False, default=str)
-        dead = []
-        for ws in list(self.clients):
-            try:
-                await ws.send_text(msg)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
+        for ws in list(self.outbox):
+            self._enqueue(ws, msg)
+
+    def _enqueue(self, ws: WebSocket, msg: str) -> None:
+        """Hand one message to a client's writer. Never waits on the socket."""
+        q = self.outbox.get(ws)
+        if q is None:
+            return
+        if q.qsize() >= OUTBOX_MAX:
+            # Hopelessly behind. Closing it is kinder than growing the queue:
+            # the client reconnects and replays from its last seq.
+            log.warning("client is %s events behind; dropping it", q.qsize())
+            self._drop(ws)
+            return
+        q.put_nowait(msg)
+
+    async def send_to(self, ws: WebSocket, payload: dict) -> None:
+        """One message to one client, through that client's queue.
+
+        Replies go the same way as events so the two keep their order: a
+        `chat.get` answer that overtook the events it was meant to precede
+        would be folded in twice by the client.
+        """
+        self._enqueue(ws, json.dumps(payload, ensure_ascii=False, default=str))
+
+    def _drop(self, ws: WebSocket) -> None:
+        """Let go of a client. Its writer closes the socket on its way out.
+
+        Cancelled rather than asked to stop: the reason a client is dropped is
+        usually that its writer is stuck inside a send that will never return,
+        and a message on the queue would be read after that send, which is the
+        wait we are trying not to do.
+        """
+        self.clients.pop(ws, None)
+        self.outbox.pop(ws, None)
+        t = self.writers.pop(ws, None)
+        if t is not None:
+            t.cancel()
+
+    async def _writer(self, ws: WebSocket, q: "asyncio.Queue[str]") -> None:
+        """Drain one client's queue onto its socket, for as long as it lives."""
+        try:
+            while True:
+                msg = await q.get()
+                try:
+                    await asyncio.wait_for(ws.send_text(msg), timeout=SEND_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    log.warning("a client took over %ss to accept a message; dropping it",
+                                SEND_TIMEOUT_S)
+                    break
+                except Exception:
+                    break
+        except asyncio.CancelledError:
+            pass
+        finally:
             self.clients.pop(ws, None)
+            self.outbox.pop(ws, None)
+            self.writers.pop(ws, None)
+            try:
+                await asyncio.wait_for(ws.close(), timeout=5)
+            except BaseException:      # teardown: a cancel here must not hide the exit
+                pass
 
     async def notify(self, kind: str, chat: dict) -> None:
         title = chat.get("title", "Chat")
@@ -577,10 +645,12 @@ class Server:
             await ws.close(code=4401, reason="unauthorized")
             return
         self.clients[ws] = dev
+        self.outbox[ws] = asyncio.Queue()
+        self.writers[ws] = asyncio.create_task(self._writer(ws, self.outbox[ws]))
         dev.last_seen = time.time()
         log.info("device connected: %s (%s)", dev.name, dev.id)
-        await ws.send_text(json.dumps({"type": "event", "event": "host.status", "chat_id": None,
-                                       "seq": None, "data": self.host_info(), "ts": time.time()}))
+        await self.send_to(ws, {"type": "event", "event": "host.status", "chat_id": None,
+                                "seq": None, "data": self.host_info(), "ts": time.time()})
         try:
             while True:
                 raw = await ws.receive_text()
@@ -594,7 +664,7 @@ class Server:
         except Exception as exc:
             log.warning("ws loop error: %s", exc)
         finally:
-            self.clients.pop(ws, None)
+            self._drop(ws)
             log.info("device disconnected: %s", dev.name)
 
     async def _dispatch(self, ws: WebSocket, dev: Device, req: dict) -> None:
@@ -614,10 +684,7 @@ class Server:
             log.warning("%s failed: %s", typ, exc)
             out = {"id": rid, "type": "error",
                    "data": {"message": str(exc), "code": getattr(exc, "code", None)}}
-        try:
-            await ws.send_text(json.dumps(out, ensure_ascii=False, default=str))
-        except Exception:
-            pass
+        await self.send_to(ws, out)
 
     # ── handlers ───────────────────────────────────────────────────────────
     async def h_ping(self, dev: Device, d: dict) -> dict:
@@ -734,16 +801,41 @@ class Server:
         return chat
 
     async def h_chat_get(self, dev: Device, d: dict) -> dict:
+        """A chat's timeline, in at most `limit` events at a time.
+
+        Which end of it depends on what is being asked. `since_seq: 0` is a
+        client opening a chat, and it is answered from the *back*: a long chat
+        answered from the front handed back its first afternoon and nothing
+        since, so the phone showed a conversation that had stopped days ago
+        while the panel — fed live, never truncated — showed the real one.
+        `truncated` says there is older history above what was sent.
+
+        A `since_seq` is a client catching up after a reconnect, and that is
+        answered forward, in order, with `more` set while events remain. A
+        client that stops at one page leaves a hole in its own timeline, so it
+        keeps asking until `more` is false.
+        """
         chat = self.db.get_chat(d["chat_id"])
         if chat is None:
             raise Err("no_chat", "no such chat")
         since = int(d.get("since_seq") or 0)
-        events = self.db.events(chat["id"], since_seq=since, limit=int(d.get("limit") or 500))
+        limit = max(1, min(2000, int(d.get("limit") or 500)))
+        if since <= 0:
+            total = self.db.count_events(chat["id"])
+            events = self.db.recent_events(chat["id"], limit=limit)
+            more, truncated = False, total > len(events)
+        else:
+            events = self.db.events(chat["id"], since_seq=since, limit=limit + 1)
+            more = len(events) > limit
+            if more:
+                events = events[:limit]
+            truncated = False
         pending = []
         s = self.sessions.peek(chat["id"])
         if s:
             pending = list(s.pending.keys())
         return {"chat": chat, "events": events, "pending_approvals": pending,
+                "more": more, "truncated": truncated,
                 "busy": bool(s and s.is_busy())}
 
     async def h_chat_update(self, dev: Device, d: dict) -> dict:
@@ -863,12 +955,8 @@ class Server:
 
         async def emit(kind: str, payload: dict) -> None:
             # Only the phone that asked; never written to the event table.
-            try:
-                await ws.send_text(json.dumps({"type": "event", "event": kind, "chat_id": None,
-                                               "seq": None, "data": payload, "ts": time.time()},
-                                              ensure_ascii=False, default=str))
-            except Exception:
-                pass
+            await self.send_to(ws, {"type": "event", "event": kind, "chat_id": None,
+                                    "seq": None, "data": payload, "ts": time.time()})
             if kind == "account.login.done":
                 self._save_accounts()
 
