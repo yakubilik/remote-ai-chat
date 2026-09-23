@@ -13,8 +13,12 @@
 
 - [x] App record created (app id 6815430115) — the public API forbids it, so it
       went through the App Store Connect web session (`/iris/v1/apps`)
-- [x] Build 1.0.0 (1) uploaded, processed Valid, attached to version 1.0
-- [x] TestFlight: internal group with the account holder, build IN_BETA_TESTING
+- [x] Build 1.0.0 (3) uploaded, Valid, attached to version 1.0 and in TestFlight
+      (1 predates the onboarding; 2 was archived from a tree carrying another
+      session's uncommitted drag-and-drop module — neither should be used)
+- [x] TestFlight: internal group with the account holder, build 3 IN_BETA_TESTING
+- [x] Onboarding: install / private network / pair, three steps before the QR code
+- [x] App Review Information: contact details and notes
 - [x] Description, keywords, subtitle, privacy/support/marketing URLs
 - [x] Category: Developer Tools
 - [x] Age rating: every answer None/false → 4+
@@ -23,9 +27,7 @@
 - [x] Screenshots uploaded, 5/5 processed
 
 ## Needs Yakup
-- [ ] A contact phone number for App Review Information — required, and the only
-      field left before the app can be submitted
-- [ ] Say go before the submission itself
+- [ ] Say go, and it is submitted
 
 ## Notes
 - No "What's New" on a first release; App Store Connect refuses to set it, and
@@ -33,5 +35,7 @@
 - The review notes offer Apple a demo daemon on request rather than a video,
   because the app cannot be driven without a paired computer.
 
-## Tear down when done
-- `rm -rf /tmp/rac-demo ~/Developer/{storefront,checkout-api,landing}`
+## Torn down
+- The demo daemon, its fake projects, the copied browser profile and every build
+  scratch directory are gone. The screenshots in `store/shots/` are all that is
+  left of that setup.
