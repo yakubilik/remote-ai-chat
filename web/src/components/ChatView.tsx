@@ -362,7 +362,14 @@ export function ChatView({ chat, hostKey, log, groupName, groups, accountLabel, 
 
   useEffect(() => {
     const el = scroller.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+    if (!el || !stick.current) return;
+    // Following the tail must not fight someone reading. A scroll under a
+    // selection being dragged drops it, and with a turn streaming that is
+    // several times a second — which is what it feels like to try to copy a
+    // line out of an answer while the agent is still writing.
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.anchorNode && el.contains(sel.anchorNode)) return;
+    el.scrollTop = el.scrollHeight;
   }, [log.items]);
 
   if (!chat) {

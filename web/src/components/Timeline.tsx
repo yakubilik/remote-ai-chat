@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { C, R } from '../lib/theme';
 import { Icon, P, Spinner, mono } from '../ui/kit';
@@ -221,7 +221,13 @@ function Assistant({ item, hostKey }: { item: Extract<Item, { kind: 'assistant' 
   const atts = item.attachments ?? [];
   const parts = stripLocalRefs(item.text, atts).split(/```/);
   return (
-    <div style={{ paddingRight: 32, fontSize: 15, lineHeight: '23px', textWrap: 'pretty' as any }}>
+    // `text-wrap: pretty` re-breaks the whole block to balance its last lines.
+    // Worth it for a finished answer; on one still streaming it is that work
+    // again for every token that arrives.
+    <div style={{
+      paddingRight: 32, fontSize: 15, lineHeight: '23px',
+      textWrap: (item.done ? 'pretty' : 'wrap') as any,
+    }}>
       {parts.map((part, i) => (
         i % 2 === 1 ? (
           <pre key={i} style={{
@@ -447,31 +453,57 @@ function Failure({ item }: { item: Extract<Item, { kind: 'error' }> }) {
   );
 }
 
+type Respond = (requestId: string, d: 'allow' | 'allow_session' | 'deny') => void;
+
+/** One thing in the conversation, and the only part of it that redraws.
+ *
+ *  A streaming turn changes exactly one item several times a second; folding
+ *  an event returns the same object for every item it did not touch. Without
+ *  this, all of them re-rendered anyway — every tool card re-diffed, every
+ *  answer re-parsed its Markdown, thousands of nodes reconciled per token —
+ *  and a long chat simply stopped answering the mouse. That is the panel that
+ *  "freezes" and wants a refresh: the refresh does not fix anything, it just
+ *  gives it a shorter conversation to redraw.
+ */
+const Row = memo(function Row({ item, prevTs, hostKey, onRespond }: {
+  item: Item; prevTs: number | null; hostKey: string; onRespond: Respond;
+}) {
+  const gap = prevTs == null || item.ts - prevTs > 1800;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {gap && <Divider ts={item.ts} />}
+      {item.kind === 'user' && <UserBubble item={item} hostKey={hostKey} />}
+      {item.kind === 'assistant' && <Assistant item={item} hostKey={hostKey} />}
+      {item.kind === 'thinking' && <Thinking item={item} />}
+      {item.kind === 'tool' && <Tool item={item} />}
+      {item.kind === 'approval' && (
+        <Approval item={item} onRespond={(d) => onRespond(item.requestId, d)} />
+      )}
+      {item.kind === 'turn' && <TurnSummary item={item} />}
+      {item.kind === 'error' && <Failure item={item} />}
+    </div>
+  );
+});
+
 export function Timeline({ items, hostKey, onRespond }: {
   items: Item[];
   hostKey: string;
-  onRespond: (requestId: string, d: 'allow' | 'allow_session' | 'deny') => void;
+  onRespond: Respond;
 }) {
+  // The handler is rebuilt on every render of the screen above; a row must not
+  // redraw because of that, so what the rows hold is a stable stand-in for it.
+  const latest = useRef(onRespond);
+  latest.current = onRespond;
+  const respond = useCallback<Respond>((rid, d) => latest.current(rid, d), []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {items.map((item, i) => {
-        const prev = items[i - 1];
-        const gap = !prev || item.ts - prev.ts > 1800;
-        return (
-          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {gap && <Divider ts={item.ts} />}
-            {item.kind === 'user' && <UserBubble item={item} hostKey={hostKey} />}
-            {item.kind === 'assistant' && <Assistant item={item} hostKey={hostKey} />}
-            {item.kind === 'thinking' && <Thinking item={item} />}
-            {item.kind === 'tool' && <Tool item={item} />}
-            {item.kind === 'approval' && (
-              <Approval item={item} onRespond={(d) => onRespond(item.requestId, d)} />
-            )}
-            {item.kind === 'turn' && <TurnSummary item={item} />}
-            {item.kind === 'error' && <Failure item={item} />}
-          </div>
-        );
-      })}
+      {items.map((item, i) => (
+        <Row
+          key={item.id} item={item} hostKey={hostKey} onRespond={respond}
+          prevTs={i > 0 ? items[i - 1].ts : null}
+        />
+      ))}
     </div>
   );
 }
