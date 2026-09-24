@@ -26,8 +26,14 @@
 - [x] App Privacy: Data Not Collected, published
 - [x] Screenshots uploaded, 5/5 processed
 
-## Needs Yakup
-- [ ] Say go, and it is submitted
+## Submitted
+Version 1.0 (build 3) went to App Review on 24 September 2026, 08:35 UTC.
+Release is set to AFTER_APPROVAL — it goes live when Apple says yes, not
+before, so there is a moment to stop it.
+
+Three things the submission turned out to need and nobody had filled in:
+price (free, all 175 territories), the content rights declaration, and a
+copyright line — "2026 Yakup Keskin".
 
 ## Notes
 - No "What's New" on a first release; App Store Connect refuses to set it, and
